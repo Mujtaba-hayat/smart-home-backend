@@ -1,9 +1,15 @@
+const smartHomeRoutes = require("./routes/smartHomeRoutes");
+const userDeviceRoutes = require("./routes/userDeviceRoutes");
 const express = require("express");
 const app = express();
+
+const connectDB = require("./database/db");
+const userRoutes = require("./routes/userRoutes");
 
 const deviceRoutes = require("./routes/deviceRoutes");
 const pumpRoutes = require("./routes/pumpRoutes");
 const automationRoutes = require("./routes/automationRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 const {
   startAutomationScheduler,
@@ -18,7 +24,10 @@ app.use(express.json());
 app.use(deviceRoutes);
 app.use(pumpRoutes);
 app.use(automationRoutes);
-
+app.use(authRoutes);
+app.use(userRoutes);
+app.use(userDeviceRoutes);
+app.use(smartHomeRoutes);
 
 // ===============================
 // Home
@@ -29,11 +38,19 @@ app.get("/", (req, res) => {
 });
 
 // ===============================
-// Server
+// Start Server
 // ===============================
 
-startAutomationScheduler();
+async function startServer() {
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
+  await connectDB();
+
+  startAutomationScheduler();
+
+  app.listen(3000, () => {
+    console.log("Server running on port 3000");
+  });
+
+}
+
+startServer();
