@@ -86,6 +86,23 @@ router.post("/user/devices", protect, async (req, res) => {
             });
         }
 
+        // Enforce 7-normal-device maximum (pump devices don't count)
+        if (type !== "pump") {
+
+            const normalDeviceCount = await Device.countDocuments({
+                home: smartHome._id,
+                type: { $ne: "pump" },
+            });
+
+            if (normalDeviceCount >= 7) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Maximum of 7 devices already added",
+                });
+            }
+
+        }
+
         // Pump relay is reserved
         if (relay === smartHome.pumpRelay && type !== "pump") {
             return res.status(400).json({

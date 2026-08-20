@@ -2,21 +2,18 @@ const mongoose = require("mongoose");
 
 const smartHomeSchema = new mongoose.Schema(
     {
-        // User who owns this smart home
         owner: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
         },
 
-        // Name given to the smart home
         name: {
             type: String,
             required: true,
             trim: true,
         },
 
-        // Unique ESP32 hardware identifier
         esp32Id: {
             type: String,
             unique: true,
@@ -24,17 +21,31 @@ const smartHomeSchema = new mongoose.Schema(
             trim: true,
         },
 
-        // Connection status of ESP32
         status: {
             type: String,
             enum: ["connected", "disconnected"],
             default: "disconnected",
         },
 
-        // Relay permanently reserved for the pump
         pumpRelay: {
             type: String,
-            default: "R6",
+            enum: ["R8"],
+            default: "R8",
+        },
+
+        pumpIsOn: {
+            type: Boolean,
+            default: false,
+        },
+
+        pairingCode: {
+            type: String,
+            default: null,
+        },
+
+        pairingCodeExpiresAt: {
+            type: Date,
+            default: null,
         },
     },
     {

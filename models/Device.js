@@ -16,27 +16,19 @@ const deviceSchema = new mongoose.Schema(
             trim: true,
         },
 
-        // Device category
+        // Device category (expand later if needed)
         type: {
             type: String,
             required: true,
             trim: true,
+            enum: ["light", "fan", "socket", "appliance", "other"],
         },
 
-        // Physical relay channel
+        // User-assignable relays only. R8 is reserved for the water pump.
         relay: {
             type: String,
             required: true,
-            enum: [
-                "R1",
-                "R2",
-                "R3",
-                "R4",
-                "R5",
-                "R6",
-                "R7",
-                "R8",
-            ],
+            enum: ["R1", "R2", "R3", "R4", "R5", "R6", "R7"],
         },
 
         // Current device state
@@ -56,5 +48,11 @@ const deviceSchema = new mongoose.Schema(
         timestamps: true,
     }
 );
+
+// One relay per home (duplicate assignment blocked at the database)
+deviceSchema.index({ home: 1, relay: 1 }, { unique: true });
+
+// One deviceId per home
+deviceSchema.index({ home: 1, deviceId: 1 }, { unique: true });
 
 module.exports = mongoose.model("Device", deviceSchema);

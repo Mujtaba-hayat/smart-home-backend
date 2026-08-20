@@ -1,3 +1,4 @@
+const SmartHome = require("../models/SmartHome");
 const storage = require("../data/storage");
 
 const {
@@ -5,68 +6,114 @@ const {
     stopPumpTimer,
 } = require("../services/pumpService");
 
-// ===============================
-// Pump Status
-// ===============================
-
-function getPumpStatus(req, res) {
-
-    res.json({
-
-        running: storage.pump.running,
-
-        duration: storage.pump.duration,
-
-        remaining: storage.pump.remaining,
-
-    });
-
+async function findOwnerHome(req) {
+    return SmartHome.findOne({ owner: req.user.userId });
 }
-// ===============================
-// Start Pump
-// ===============================
 
-function startPump(req, res) {
+async function getPumpStatus(req, res) {
+    try {
+        const smartHome = await findOwnerHome(req);
 
-    const { minutes } = req.body;
+        if (!smartHome) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
 
-    if (!minutes) {
-
-        return res.status(400).json({
-            success: false,
-            message: "Minutes required",
+        res.json({
+            success: true,
+            relay: "R8",
+            running: Boolean(smartHome.pumpIsOn),
+            duration: storage.pump.duration,
+            remaining: storage.pump.remaining,
         });
-
+    } catch (error) {
+        console.error("Get Pump Status Error:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
     }
-
-    startPumpTimer(minutes);
-
-    res.json({
-
-        success: true,
-
-        message: "Pump Started",
-
-        minutes,
-
-    });
 }
 
-// ===============================
-// Stop Pump
-// ===============================
+async function startPump(req, res) {
+    try {
+        const { minutes } = req.body;
 
-function stopPump(req, res) {
+        if (!minutes) {
+            return res.status(400).json({
+                success: false,
+                message: "Minutes required",
+            });
+        }
 
-    stopPumpTimer();
+        const smartHome = await findOwnerHome(req);
 
-    res.json({
+        if (!smartHome) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
 
-        success: true,
+        smartHome.pumpIsOn = true;
+        smartHome.pumpRelay = "R8";
+        await smartHome.save();
 
-        message: "Pump Stopped",
+        startPumpTimer(minutes);
 
-    });
+        res.json({
+            success: true,
+            message: "Pump started",
+            minutes,
+            pump: {
+                name: "Water Pump",
+                relay: "R8",
+                isOn: true,
+            },
+        });
+    } catch (error) {
+        console.error("Start Pump Error:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+async function stopPump(req, res) {
+    try {
+        const smartHome = await findOwnerHome(req);
+
+        if (!smartHome) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
+
+        stopPumpTimer();
+
+        smartHome.pumpIsOn = false;
+        await smartHome.save();
+
+        res.json({
+            success: true,
+            message: "Pump stopped",
+            pump: {
+                name: "Water Pump",
+                relay: "R8",
+                isOn: false,
+            },
+        });
+    } catch (error) {
+        console.error("Stop Pump Error:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
 }
 
 module.exports = {
