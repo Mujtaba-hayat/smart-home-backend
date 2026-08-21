@@ -57,5 +57,16 @@ router.delete(
     deleteDevice
 );
 
+// =====================================
+// Water Pump Control
+// R8 is permanently reserved
+// =====================================
+
+router.put(
+    "/user/pump/control",
+    protect,
+    controlPump
+);
+
 
 module.exports = router;

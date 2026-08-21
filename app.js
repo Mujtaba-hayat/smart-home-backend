@@ -1,27 +1,56 @@
+const smartHomeRoutes = require("./routes/smartHomeRoutes");
+const userDeviceRoutes = require("./routes/userDeviceRoutes");
 const express = require("express");
-const router = express.Router();
+const app = express();
+
+const connectDB = require("./database/db");
+const userRoutes = require("./routes/userRoutes");
+
+const deviceRoutes = require("./routes/deviceRoutes");
+const pumpRoutes = require("./routes/pumpRoutes");
+const automationRoutes = require("./routes/automationRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 const {
-    getDevices,
-    getUserDevices,
-    addDevice,
-    controlDevice,
-    deleteDevice,
-    controlPump,
-} = require("../controllers/deviceController");
+  startAutomationScheduler,
+} = require("./scheduler/automationScheduler");
 
-const protect = require("../middleware/authMiddleware");
+app.use(express.json());
 
-router.get("/devices", getDevices);
+// ===============================
+// Routes
+// ===============================
 
-router.get("/user/devices", protect, getUserDevices);
-router.post("/user/devices", protect, addDevice);
+app.use(deviceRoutes);
+app.use(pumpRoutes);
+app.use(automationRoutes);
+app.use(authRoutes);
+app.use(userRoutes);
+app.use(userDeviceRoutes);
+app.use(smartHomeRoutes);
 
-router.put("/user/devices/:deviceId/control", protect, controlDevice);
-router.post("/user/devices/:deviceId/control", protect, controlDevice);
+// ===============================
+// Home
+// ===============================
 
-router.delete("/user/devices/:deviceId", protect, deleteDevice);
+app.get("/", (req, res) => {
+  res.send("Smart Home Backend Running");
+});
 
-router.put("/user/pump/control", protect, controlPump);
+// ===============================
+// Start Server
+// ===============================
 
-module.exports = router;
+async function startServer() {
+
+  await connectDB();
+
+  startAutomationScheduler();
+
+  app.listen(3000, () => {
+    console.log("Server running on port 3000");
+  });
+
+}
+
+startServer();
