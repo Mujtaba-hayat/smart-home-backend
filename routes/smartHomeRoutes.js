@@ -262,7 +262,7 @@ router.post("/user/smart-home", protect, async (req, res) => {
             status: "disconnected",
 
             // Fixed pump relay
-            pumpRelay: "R6",
+            pumpRelay: "R8",
 
         });
 
