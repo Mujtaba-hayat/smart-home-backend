@@ -1,18 +1,25 @@
 const SmartHome = require("../models/SmartHome");
-const storage = require("../data/storage");
 
-const {
-    startPumpTimer,
-    stopPumpTimer,
-} = require("../services/pumpService");
+// =====================================================
+// FIND OWNER SMART HOME
+// =====================================================
 
-async function findOwnerHome(req) {
-    return SmartHome.findOne({ owner: req.user.userId });
+async function findOwnerHome(userId) {
+    return SmartHome.findOne({
+        owner: userId,
+    });
 }
+
+// =====================================================
+// GET PUMP STATUS
+// =====================================================
 
 async function getPumpStatus(req, res) {
     try {
-        const smartHome = await findOwnerHome(req);
+        const userId = req.user.userId;
+
+        const smartHome =
+            await findOwnerHome(userId);
 
         if (!smartHome) {
             return res.status(404).json({
@@ -21,34 +28,49 @@ async function getPumpStatus(req, res) {
             });
         }
 
-        res.json({
+        return res.json({
             success: true,
-            relay: "R8",
-            running: Boolean(smartHome.pumpIsOn),
-            duration: storage.pump.duration,
-            remaining: storage.pump.remaining,
+
+            pump: {
+                relay: smartHome.pumpRelay || "R8",
+
+                isOn:
+                    smartHome.pumpIsOn === true,
+
+                status:
+                    smartHome.pumpIsOn === true
+                        ? "running"
+                        : "off",
+
+                lastSeen:
+                    smartHome.lastSeen,
+            },
         });
+
     } catch (error) {
-        console.error("Get Pump Status Error:", error.message);
-        res.status(500).json({
+
+        console.error(
+            "GET PUMP STATUS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
             success: false,
             message: "Server error",
         });
     }
 }
+
+// =====================================================
+// START PUMP
+// =====================================================
 
 async function startPump(req, res) {
     try {
-        const { minutes } = req.body;
+        const userId = req.user.userId;
 
-        if (!minutes) {
-            return res.status(400).json({
-                success: false,
-                message: "Minutes required",
-            });
-        }
-
-        const smartHome = await findOwnerHome(req);
+        const smartHome =
+            await findOwnerHome(userId);
 
         if (!smartHome) {
             return res.status(404).json({
@@ -57,34 +79,77 @@ async function startPump(req, res) {
             });
         }
 
-        smartHome.pumpIsOn = true;
+        // R8 is permanently reserved for pump
         smartHome.pumpRelay = "R8";
+
+        smartHome.pumpIsOn = true;
+
         await smartHome.save();
 
-        startPumpTimer(minutes);
+        console.log(
+            "================================="
+        );
 
-        res.json({
+        console.log(
+            "WATER PUMP STARTED"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+        console.log(
+            "Relay:",
+            "R8"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return res.json({
             success: true,
-            message: "Pump started",
-            minutes,
+
+            message:
+                "Water pump started successfully",
+
             pump: {
-                name: "Water Pump",
                 relay: "R8",
                 isOn: true,
+                status: "running",
             },
         });
+
     } catch (error) {
-        console.error("Start Pump Error:", error.message);
-        res.status(500).json({
+
+        console.error(
+            "START PUMP ERROR:",
+            error
+        );
+
+        return res.status(500).json({
             success: false,
             message: "Server error",
         });
     }
 }
+
+// =====================================================
+// STOP PUMP
+// =====================================================
 
 async function stopPump(req, res) {
     try {
-        const smartHome = await findOwnerHome(req);
+        const userId = req.user.userId;
+
+        const smartHome =
+            await findOwnerHome(userId);
 
         if (!smartHome) {
             return res.status(404).json({
@@ -93,28 +158,70 @@ async function stopPump(req, res) {
             });
         }
 
-        stopPumpTimer();
+        // R8 is permanently reserved for pump
+        smartHome.pumpRelay = "R8";
 
         smartHome.pumpIsOn = false;
+
         await smartHome.save();
 
-        res.json({
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "WATER PUMP STOPPED"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+        console.log(
+            "Relay:",
+            "R8"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return res.json({
             success: true,
-            message: "Pump stopped",
+
+            message:
+                "Water pump stopped successfully",
+
             pump: {
-                name: "Water Pump",
                 relay: "R8",
                 isOn: false,
+                status: "off",
             },
         });
+
     } catch (error) {
-        console.error("Stop Pump Error:", error.message);
-        res.status(500).json({
+
+        console.error(
+            "STOP PUMP ERROR:",
+            error
+        );
+
+        return res.status(500).json({
             success: false,
             message: "Server error",
         });
     }
 }
+
+// =====================================================
+// EXPORT
+// =====================================================
 
 module.exports = {
     getPumpStatus,

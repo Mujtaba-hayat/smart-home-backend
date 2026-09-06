@@ -20,6 +20,20 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+
+    // ===============================
+    // Password Reset
+    // ===============================
+
+    resetPasswordCode: {
+      type: String,
+      default: null,
+    },
+
+    resetPasswordCodeExpires: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

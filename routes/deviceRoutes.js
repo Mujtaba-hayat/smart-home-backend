@@ -9,10 +9,20 @@ const {
     controlDevice,
     deleteDevice,
     controlPump,
+    controlAlarm,
 } = require("../controllers/deviceController");
 
 const protect = require("../middleware/authMiddleware");
+// =====================================
+// Door Alarm Control
+// R7 is permanently reserved
+// =====================================
 
+router.put(
+    "/user/alarm/control",
+    protect,
+    controlAlarm
+);
 
 // =====================================
 // ESP32
