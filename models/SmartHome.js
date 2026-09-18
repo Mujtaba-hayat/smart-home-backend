@@ -34,7 +34,7 @@ const smartHomeSchema = new mongoose.Schema(
                     required: true,
                 },
 
-                // Can control R1-R7 devices
+                // Can control R1-R6 normal devices
                 controlDevices: {
                     type: Boolean,
                     default: true,
@@ -114,44 +114,53 @@ const smartHomeSchema = new mongoose.Schema(
             default: null,
         },
 
-
         // =====================================
-// DOOR ALARM / BUZZER
-// =====================================
+        // DOOR ALARM / BUZZER
+        // =====================================
 
-// R7 is permanently reserved for alarm
-alarmRelay: {
-    type: String,
-    enum: ["R7"],
-    default: "R7",
-},
+        // R7 is permanently reserved for alarm
+        alarmRelay: {
+            type: String,
+            enum: ["R7"],
+            default: "R7",
+        },
 
-// User preference:
-// true  = alarm system enabled
-// false = alarm system disabled
-alarmEnabled: {
-    type: Boolean,
-    default: true,
-},
+        // User preference:
+        // true  = alarm system enabled
+        // false = alarm system disabled
+        alarmEnabled: {
+            type: Boolean,
+            default: true,
+        },
 
-// Actual buzzer state
-// true  = R7 ON
-// false = R7 OFF
-alarmIsOn: {
-    type: Boolean,
-    default: false,
-},
+        // Actual buzzer state:
+        // true  = R7 ON
+        // false = R7 OFF
+        alarmIsOn: {
+            type: Boolean,
+            default: false,
+        },
+
+        // Temporary silence state:
+        // true  = current alarm has been silenced
+        // false = alarm is allowed to trigger normally
+        alarmSilenced: {
+            type: Boolean,
+            default: false,
+        },
 
         // =====================================
         // WATER PUMP
         // =====================================
 
+        // R8 is permanently reserved for water pump
         pumpRelay: {
             type: String,
             enum: ["R8"],
             default: "R8",
         },
 
+        // Actual pump state
         pumpIsOn: {
             type: Boolean,
             default: false,

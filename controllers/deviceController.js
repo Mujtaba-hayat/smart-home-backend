@@ -3,6 +3,12 @@ const SmartHome = require("../models/SmartHome");
 const Member = require("../models/Member");
 const mongoose = require("mongoose");
 
+const {
+    createDeviceNotification,
+    createPumpNotification,
+} = require("./notificationController");
+
+
 // =====================================================
 // RELAY CONFIGURATION
 // =====================================================
@@ -23,14 +29,13 @@ const ALARM_RELAY = "R7";
 // R8 = Water Pump
 const PUMP_RELAY = "R8";
 
-// Maximum number of devices that can be stored
-// in Device collection:
-//
-// R1-R6 normal devices
-// R7 alarm
+// Maximum devices:
+// R1-R6 = 6 normal devices
+// R7    = 1 alarm
 //
 // Total = 7
 const MAX_NORMAL_DEVICES = 7;
+
 
 // =====================================================
 // DEFAULT RELAY STATES
@@ -48,8 +53,10 @@ function defaultRelayStates() {
         R6: "OFF",
         R7: "OFF",
         R8: "OFF",
+
     };
 }
+
 
 // =====================================================
 // FIND OWNER SMART HOME
@@ -69,6 +76,7 @@ async function findOwnerHome(userId) {
     });
 }
 
+
 // =====================================================
 // FIND ACCEPTED MEMBER
 // =====================================================
@@ -82,6 +90,7 @@ async function findAcceptedMembership(userId) {
 
     }).populate("smartHome");
 }
+
 
 // =====================================================
 // FIND USER SMART HOME ACCESS
@@ -154,12 +163,15 @@ async function findUserSmartHome(userId) {
             smartHome:
                 membership.smartHome,
 
-            isOwner: false,
+            isOwner:
+                false,
 
             membership:
                 membership,
+
         };
     }
+
 
     // -------------------------------------------------
     // SECOND: CHECK OWNER
@@ -223,14 +235,18 @@ async function findUserSmartHome(userId) {
             smartHome:
                 ownedHome,
 
-            isOwner: true,
+            isOwner:
+                true,
 
-            membership: null,
+            membership:
+                null,
+
         };
     }
 
     return null;
 }
+
 
 // =====================================================
 // CHECK DEVICE CONTROL PERMISSION
@@ -268,6 +284,7 @@ async function canControlDevices(
     );
 }
 
+
 // =====================================================
 // CHECK PUMP CONTROL PERMISSION
 // =====================================================
@@ -303,6 +320,7 @@ async function canControlPump(
         membership?.canControlPump === true
     );
 }
+
 
 // =====================================================
 // CHECK DEVICE MANAGEMENT PERMISSION
@@ -340,6 +358,7 @@ async function canManageDevices(
     );
 }
 
+
 // =====================================================
 // FIND DEVICE FOR HOME
 // =====================================================
@@ -350,6 +369,7 @@ async function findDeviceForHome(
 ) {
 
     let device = null;
+
 
     // -------------------------------------------------
     // FIND BY MONGODB _id
@@ -373,8 +393,9 @@ async function findDeviceForHome(
             });
     }
 
+
     // -------------------------------------------------
-    // FIND BY DEVICE ID
+    // FIND BY CUSTOM DEVICE ID
     // -------------------------------------------------
 
     if (!device) {
@@ -394,6 +415,7 @@ async function findDeviceForHome(
     return device;
 }
 
+
 // =====================================================
 // ERROR HANDLER
 // =====================================================
@@ -409,6 +431,11 @@ function handleDeviceError(
         error
     );
 
+
+    // -------------------------------------------------
+    // DUPLICATE KEY
+    // -------------------------------------------------
+
     if (
         error &&
         error.code === 11000
@@ -420,8 +447,14 @@ function handleDeviceError(
 
             message:
                 "This relay or device ID is already assigned",
+
         });
     }
+
+
+    // -------------------------------------------------
+    // MONGOOSE VALIDATION ERROR
+    // -------------------------------------------------
 
     if (
         error &&
@@ -435,8 +468,35 @@ function handleDeviceError(
 
             message:
                 error.message,
+
         });
     }
+
+
+    // -------------------------------------------------
+    // INVALID OBJECT ID
+    // -------------------------------------------------
+
+    if (
+        error &&
+        error.name ===
+            "CastError"
+    ) {
+
+        return res.status(400).json({
+
+            success: false,
+
+            message:
+                "Invalid ID",
+
+        });
+    }
+
+
+    // -------------------------------------------------
+    // SERVER ERROR
+    // -------------------------------------------------
 
     return res.status(500).json({
 
@@ -444,8 +504,10 @@ function handleDeviceError(
 
         message:
             "Server error",
+
     });
 }
+
 
 // =====================================================
 // GET RELAY STATES
@@ -453,9 +515,8 @@ function handleDeviceError(
 // ESP32 ONLY
 //
 // R1-R6 = Device collection
-// R7    = Alarm Device
+// R7    = SmartHome.alarmIsOn
 // R8    = SmartHome.pumpIsOn
-//
 // =====================================================
 
 async function getDevices(
@@ -479,8 +540,10 @@ async function getDevices(
             "================================="
         );
 
+
         const esp32Id =
             req.query.esp32Id;
+
 
         console.log(
             "Requested ESP32 ID:",
@@ -488,10 +551,13 @@ async function getDevices(
                 "Not provided"
         );
 
+
         const relayStates =
             defaultRelayStates();
 
+
         let smartHome = null;
+
 
         // -------------------------------------------------
         // FIND SMART HOME BY ESP32 ID
@@ -503,7 +569,9 @@ async function getDevices(
                 await SmartHome.findOne({
 
                     esp32Id:
-                        esp32Id,
+                        String(
+                            esp32Id
+                        ).trim(),
 
                 });
 
@@ -525,10 +593,12 @@ async function getDevices(
                             null,
                             "",
                         ],
+
                     },
 
                 });
         }
+
 
         // -------------------------------------------------
         // SMART HOME NOT FOUND
@@ -552,6 +622,7 @@ async function getDevices(
                 relayStates
             );
         }
+
 
         console.log(
             "SmartHome MongoDB ID:",
@@ -578,6 +649,22 @@ async function getDevices(
             smartHome.pumpIsOn
         );
 
+        console.log(
+            "SmartHome alarmIsOn:",
+            smartHome.alarmIsOn
+        );
+
+        console.log(
+            "SmartHome alarmEnabled:",
+            smartHome.alarmEnabled
+        );
+
+        console.log(
+            "SmartHome alarmSilenced:",
+            smartHome.alarmSilenced
+        );
+
+
         // -------------------------------------------------
         // GET ALL DEVICES
         // -------------------------------------------------
@@ -590,6 +677,7 @@ async function getDevices(
 
             });
 
+
         console.log(
             "Number of devices:",
             devices.length
@@ -599,64 +687,70 @@ async function getDevices(
             "---------------------------------"
         );
 
-// -------------------------------------------------
-// R1-R6 = NORMAL DEVICES
-// -------------------------------------------------
 
-devices.forEach(
-    (device) => {
+        // -------------------------------------------------
+        // R1-R6 = NORMAL DEVICES
+        // -------------------------------------------------
 
-        console.log(
-            "DATABASE DEVICE:",
-            device.name,
-            "| Relay:",
-            device.relay,
-            "| isOn:",
-            device.isOn,
-            "| Type:",
-            device.type
+        devices.forEach(
+            (device) => {
+
+                console.log(
+                    "DATABASE DEVICE:",
+                    device.name,
+                    "| Relay:",
+                    device.relay,
+                    "| isOn:",
+                    device.isOn,
+                    "| Type:",
+                    device.type
+                );
+
+
+                if (
+                    NORMAL_RELAYS.includes(
+                        device.relay
+                    )
+                ) {
+
+                    relayStates[
+                        device.relay
+                    ] =
+                        device.isOn === true
+                            ? "ON"
+                            : "OFF";
+                }
+            }
         );
 
+
         // -------------------------------------------------
-        // R1-R6 NORMAL DEVICES
+        // R7 = DOOR ALARM SIREN
         // -------------------------------------------------
 
-        if (
-            NORMAL_RELAYS.includes(
-                device.relay
-            )
-        ) {
+        relayStates[
+            ALARM_RELAY
+        ] =
+            smartHome.alarmIsOn === true
+                ? "ON"
+                : "OFF";
 
+
+        console.log(
+            "R7 ALARM:",
+            "Enabled =",
+            smartHome.alarmEnabled,
+            "| Silenced =",
+            smartHome.alarmSilenced,
+            "| Siren =",
+            smartHome.alarmIsOn,
+            "| Relay =",
             relayStates[
-                device.relay
-            ] =
-                device.isOn === true
-                    ? "ON"
-                    : "OFF";
-        }
-    }
-);
+                ALARM_RELAY
+            ]
+        );
 
-// -------------------------------------------------
-// R7 = DOOR ALARM SIREN
-// -------------------------------------------------
 
-relayStates[
-    ALARM_RELAY
-] =
-    smartHome.alarmIsOn === true
-        ? "ON"
-        : "OFF";
-
-console.log(
-    "R7 ALARM:",
-    "Enabled =",
-    smartHome.alarmEnabled,
-    "| Siren =",
-    smartHome.alarmIsOn,
-    "| Relay =",
-    relayStates[ALARM_RELAY]
-);
         // -------------------------------------------------
         // R8 = WATER PUMP
         // -------------------------------------------------
@@ -667,6 +761,7 @@ console.log(
             smartHome.pumpIsOn === true
                 ? "ON"
                 : "OFF";
+
 
         // -------------------------------------------------
         // FINAL STATES
@@ -680,6 +775,7 @@ console.log(
             "FINAL RELAY STATES SENT TO ESP32:"
         );
 
+
         Object.keys(
             relayStates
         ).forEach(
@@ -692,9 +788,11 @@ console.log(
             }
         );
 
+
         console.log(
             "================================="
         );
+
 
         return res.json(
             relayStates
@@ -713,15 +811,16 @@ console.log(
 
             message:
                 "Server error",
+
         });
     }
 }
+
 
 // =====================================================
 // GET USER DEVICES
 //
 // OWNER + ACCEPTED MEMBER
-//
 // =====================================================
 
 async function getUserDevices(
@@ -734,10 +833,12 @@ async function getUserDevices(
         const userId =
             req.user.userId;
 
+
         const access =
             await findUserSmartHome(
                 userId
             );
+
 
         if (!access) {
 
@@ -747,14 +848,17 @@ async function getUserDevices(
 
                 message:
                     "Smart home not found",
+
             });
         }
+
 
         const {
             smartHome,
             isOwner,
             membership,
         } = access;
+
 
         // -------------------------------------------------
         // GET DEVICES
@@ -772,6 +876,7 @@ async function getUserDevices(
                     1,
 
             });
+
 
         // -------------------------------------------------
         // PERMISSIONS
@@ -808,6 +913,11 @@ async function getUserDevices(
                             ?.canManageDevices === true,
 
                 };
+
+
+        // -------------------------------------------------
+        // LOG
+        // -------------------------------------------------
 
         console.log();
 
@@ -865,9 +975,25 @@ async function getUserDevices(
         );
 
         console.log(
+            "Alarm Enabled:",
+            smartHome.alarmEnabled === true
+        );
+
+        console.log(
+            "Alarm Silenced:",
+            smartHome.alarmSilenced === true
+        );
+
+        console.log(
+            "Alarm Siren:",
+            smartHome.alarmIsOn === true
+        );
+
+        console.log(
             "Permissions:",
             permissions
         );
+
 
         devices.forEach(
             (device) => {
@@ -882,16 +1008,19 @@ async function getUserDevices(
             }
         );
 
+
         console.log(
             "================================="
         );
+
 
         return res.json({
 
             success: true,
 
+
             // -------------------------------------------------
-            // ALL DEVICES INCLUDING ALARM
+            // DEVICES
             // -------------------------------------------------
 
             devices,
@@ -907,10 +1036,9 @@ async function getUserDevices(
                 devices.length <
                     MAX_NORMAL_DEVICES,
 
+
             // -------------------------------------------------
             // ALARM
-            //
-            // If an alarm device exists, return it.
             // -------------------------------------------------
 
             alarm:
@@ -919,6 +1047,7 @@ async function getUserDevices(
                         device.relay ===
                         ALARM_RELAY
                 ) || null,
+
 
             // -------------------------------------------------
             // PUMP
@@ -934,7 +1063,9 @@ async function getUserDevices(
 
                 isOn:
                     smartHome.pumpIsOn === true,
+
             },
+
 
             // -------------------------------------------------
             // SMART HOME
@@ -975,17 +1106,27 @@ async function getUserDevices(
                     smartHome.sensorLastUpdated ??
                     null,
 
-                // Keep these fields for compatibility
                 alarmEnabled:
                     smartHome.alarmEnabled === true,
 
                 alarmIsOn:
                     smartHome.alarmIsOn === true,
+
+                // NEW
+                alarmSilenced:
+                    smartHome.alarmSilenced === true,
+
             },
+
+
+            // -------------------------------------------------
+            // ACCESS
+            // -------------------------------------------------
 
             isOwner,
 
             permissions,
+
         });
 
     } catch (error) {
@@ -998,14 +1139,15 @@ async function getUserDevices(
     }
 }
 
+
 // =====================================================
 // ADD DEVICE
 //
 // R1-R7
 //
-// R7 CAN ONLY BE USED BY ALARM
-// R8 IS RESERVED FOR PUMP
-//
+// R1-R6 = NORMAL
+// R7    = ALARM
+// R8    = PUMP
 // =====================================================
 
 async function addDevice(
@@ -1022,8 +1164,9 @@ async function addDevice(
             relay,
         } = req.body;
 
+
         // -------------------------------------------------
-        // VALIDATE REQUIRED FIELDS
+        // VALIDATE
         // -------------------------------------------------
 
         if (
@@ -1039,18 +1182,22 @@ async function addDevice(
 
                 message:
                     "Name, deviceId, type and relay are required",
+
             });
         }
+
 
         const cleanType =
             String(type)
                 .trim()
                 .toLowerCase();
 
+
         const cleanRelay =
             String(relay)
                 .trim()
                 .toUpperCase();
+
 
         // -------------------------------------------------
         // R8 RESERVED
@@ -1067,13 +1214,13 @@ async function addDevice(
 
                 message:
                     "R8 is permanently reserved for the water pump",
+
             });
         }
 
+
         // -------------------------------------------------
-        // VALID RELAY
-        //
-        // R1-R7
+        // VALID RELAYS
         // -------------------------------------------------
 
         const validRelays = [
@@ -1083,6 +1230,7 @@ async function addDevice(
             ALARM_RELAY,
 
         ];
+
 
         if (
             !validRelays.includes(
@@ -1096,8 +1244,10 @@ async function addDevice(
 
                 message:
                     "Relay must be one of R1 to R7",
+
             });
         }
+
 
         // -------------------------------------------------
         // R7 MUST BE ALARM
@@ -1116,8 +1266,10 @@ async function addDevice(
 
                 message:
                     "R7 is reserved for the door alarm. Device type must be alarm.",
+
             });
         }
+
 
         // -------------------------------------------------
         // ALARM MUST USE R7
@@ -1136,8 +1288,10 @@ async function addDevice(
 
                 message:
                     "Alarm device must use relay R7.",
+
             });
         }
+
 
         // -------------------------------------------------
         // FIND USER HOME
@@ -1148,6 +1302,7 @@ async function addDevice(
                 req.user.userId
             );
 
+
         if (!access) {
 
             return res.status(404).json({
@@ -1156,15 +1311,18 @@ async function addDevice(
 
                 message:
                     "Smart home not found",
+
             });
         }
+
 
         const {
             smartHome,
         } = access;
 
+
         // -------------------------------------------------
-        // CHECK MANAGEMENT PERMISSION
+        // MANAGEMENT PERMISSION
         // -------------------------------------------------
 
         const allowed =
@@ -1172,6 +1330,7 @@ async function addDevice(
                 req.user.userId,
                 smartHome
             );
+
 
         if (!allowed) {
 
@@ -1181,13 +1340,13 @@ async function addDevice(
 
                 message:
                     "You do not have permission to manage devices",
+
             });
         }
 
+
         // -------------------------------------------------
         // MAXIMUM 7 DEVICES
-        //
-        // R1-R6 + R7 Alarm
         // -------------------------------------------------
 
         const deviceCount =
@@ -1197,6 +1356,7 @@ async function addDevice(
                     smartHome._id,
 
             });
+
 
         if (
             deviceCount >=
@@ -1209,8 +1369,10 @@ async function addDevice(
 
                 message:
                     "You can add a maximum of 7 devices including the door alarm",
+
             });
         }
+
 
         // -------------------------------------------------
         // CHECK RELAY
@@ -1227,6 +1389,7 @@ async function addDevice(
 
             });
 
+
         if (existingRelay) {
 
             return res.status(409).json({
@@ -1235,8 +1398,10 @@ async function addDevice(
 
                 message:
                     `${cleanRelay} is already assigned to another device`,
+
             });
         }
+
 
         // -------------------------------------------------
         // CHECK DEVICE ID
@@ -1244,6 +1409,7 @@ async function addDevice(
 
         const cleanDeviceId =
             String(deviceId).trim();
+
 
         const existingDevice =
             await Device.findOne({
@@ -1256,6 +1422,7 @@ async function addDevice(
 
             });
 
+
         if (existingDevice) {
 
             return res.status(409).json({
@@ -1264,8 +1431,10 @@ async function addDevice(
 
                 message:
                     "This device ID is already in use",
+
             });
         }
+
 
         // -------------------------------------------------
         // CREATE DEVICE
@@ -1291,7 +1460,32 @@ async function addDevice(
 
                 home:
                     smartHome._id,
+
             });
+
+
+        // -------------------------------------------------
+        // IF ALARM DEVICE IS CREATED
+        // MAKE SURE SMART HOME ALARM STATE IS CLEAN
+        // -------------------------------------------------
+
+        if (
+            cleanRelay ===
+            ALARM_RELAY
+        ) {
+
+            smartHome.alarmEnabled =
+                false;
+
+            smartHome.alarmIsOn =
+                false;
+
+            smartHome.alarmSilenced =
+                false;
+
+            await smartHome.save();
+        }
+
 
         console.log(
             `DEVICE CREATED: ` +
@@ -1301,6 +1495,7 @@ async function addDevice(
             `Home: ${smartHome._id}`
         );
 
+
         return res.status(201).json({
 
             success: true,
@@ -1309,6 +1504,7 @@ async function addDevice(
                 "Device added successfully",
 
             device,
+
         });
 
     } catch (error) {
@@ -1321,14 +1517,13 @@ async function addDevice(
     }
 }
 
+
 // =====================================================
 // CONTROL DEVICE
 //
-// R1-R7
-//
-// R7 = ALARM
-// R8 = NOT ALLOWED HERE
-//
+// R1-R6 = NORMAL DEVICE
+// R7    = ALARM
+// R8    = PUMP - NOT ALLOWED HERE
 // =====================================================
 
 async function controlDevice(
@@ -1342,9 +1537,11 @@ async function controlDevice(
             deviceId,
         } = req.params;
 
+
         const {
             state,
         } = req.body;
+
 
         console.log();
 
@@ -1375,6 +1572,7 @@ async function controlDevice(
             state
         );
 
+
         // -------------------------------------------------
         // VALIDATE STATE
         // -------------------------------------------------
@@ -1391,8 +1589,10 @@ async function controlDevice(
 
                 message:
                     "State must be ON or OFF",
+
             });
         }
+
 
         // -------------------------------------------------
         // FIND HOME
@@ -1403,6 +1603,7 @@ async function controlDevice(
                 req.user.userId
             );
 
+
         if (!access) {
 
             return res.status(404).json({
@@ -1411,12 +1612,15 @@ async function controlDevice(
 
                 message:
                     "Smart home not found",
+
             });
         }
+
 
         const {
             smartHome,
         } = access;
+
 
         // -------------------------------------------------
         // PERMISSION
@@ -1428,6 +1632,7 @@ async function controlDevice(
                 smartHome
             );
 
+
         if (!allowed) {
 
             return res.status(403).json({
@@ -1436,8 +1641,10 @@ async function controlDevice(
 
                 message:
                     "You do not have permission to control devices",
+
             });
         }
+
 
         // -------------------------------------------------
         // FIND DEVICE
@@ -1449,6 +1656,7 @@ async function controlDevice(
                 smartHome._id
             );
 
+
         if (!device) {
 
             return res.status(404).json({
@@ -1457,8 +1665,10 @@ async function controlDevice(
 
                 message:
                     "Device not found",
+
             });
         }
+
 
         // -------------------------------------------------
         // R8 PROTECTION
@@ -1475,14 +1685,14 @@ async function controlDevice(
 
                 message:
                     "R8 is reserved for the water pump",
+
             });
         }
 
-        // -------------------------------------------------
-        // R7 VALIDATION
-        //
-        // R7 must remain an alarm device.
-        // -------------------------------------------------
+
+        // =================================================
+        // R7 = DOOR ALARM
+        // =================================================
 
         if (
             device.relay ===
@@ -1500,30 +1710,35 @@ async function controlDevice(
 
                     message:
                         "R7 can only be used by the alarm device",
+
                 });
             }
 
+
+            const previousAlarmState =
+                device.isOn === true;
+
+
+            const newAlarmState =
+                state === "ON";
+
+
             // -------------------------------------------------
-            // ALARM MANUAL ON/OFF
-            //
-            // ON  = Alarm armed
-            // OFF = Alarm disarmed
-            //
-            // We store the state in the Device document.
+            // UPDATE ALARM ARM/DISARM STATE
             // -------------------------------------------------
 
             device.isOn =
-                state === "ON";
+                newAlarmState;
 
-            // Keep SmartHome compatibility fields updated.
             smartHome.alarmEnabled =
-                state === "ON";
+                newAlarmState;
 
-            // Manual ON does NOT immediately activate
-            // the siren.
-            //
-            // The actual R7 relay will turn ON when
-            // the door opens while alarm is armed.
+
+            // -------------------------------------------------
+            // IMPORTANT:
+            // WHEN USER DISARMS THE ALARM,
+            // RESET SILENCED STATE TOO.
+            // -------------------------------------------------
 
             if (
                 state === "OFF"
@@ -1531,25 +1746,65 @@ async function controlDevice(
 
                 smartHome.alarmIsOn =
                     false;
+
+                smartHome.alarmSilenced =
+                    false;
             }
+
+
+            // -------------------------------------------------
+            // WHEN USER ARMS THE ALARM,
+            // START WITH A FRESH ALARM STATE.
+            // -------------------------------------------------
+
+            else {
+
+                smartHome.alarmSilenced =
+                    false;
+            }
+
 
             await device.save();
 
             await smartHome.save();
 
+
             console.log(
                 `ALARM STATE CHANGED: ` +
                 `R7 | ` +
-                `Armed: ${device.isOn} | ` +
-                `Siren: ${smartHome.alarmIsOn}`
+                `Previous Armed: ${
+                    previousAlarmState
+                        ? "ON"
+                        : "OFF"
+                } | ` +
+                `New Armed: ${
+                    newAlarmState
+                        ? "ON"
+                        : "OFF"
+                } | ` +
+                `Silenced: ${
+                    smartHome.alarmSilenced
+                        ? "YES"
+                        : "NO"
+                } | ` +
+                `Siren: ${
+                    smartHome.alarmIsOn
+                        ? "ON"
+                        : "OFF"
+                }`
             );
+
 
             return res.json({
 
                 success: true,
 
                 message:
-                    `Door alarm ${state === "ON" ? "armed" : "disarmed"}`,
+                    `Door alarm ${
+                        state === "ON"
+                            ? "armed"
+                            : "disarmed"
+                    }`,
 
                 device,
 
@@ -1566,13 +1821,19 @@ async function controlDevice(
 
                     isOn:
                         smartHome.alarmIsOn === true,
+
+                    silenced:
+                        smartHome.alarmSilenced === true,
+
                 },
+
             });
         }
 
-        // -------------------------------------------------
-        // NORMAL DEVICE R1-R6
-        // -------------------------------------------------
+
+        // =================================================
+        // R1-R6 = NORMAL DEVICES
+        // =================================================
 
         if (
             !NORMAL_RELAYS.includes(
@@ -1586,8 +1847,22 @@ async function controlDevice(
 
                 message:
                     "Invalid device relay",
+
             });
         }
+
+
+        // -------------------------------------------------
+        // REMEMBER PREVIOUS STATE
+        // -------------------------------------------------
+
+        const previousDeviceState =
+            device.isOn === true;
+
+
+        const newDeviceState =
+            state === "ON";
+
 
         console.log(
             `BEFORE UPDATE: ` +
@@ -1596,21 +1871,67 @@ async function controlDevice(
             `isOn: ${device.isOn}`
         );
 
+
         // -------------------------------------------------
         // UPDATE DEVICE
         // -------------------------------------------------
 
         device.isOn =
-            state === "ON";
+            newDeviceState;
+
 
         await device.save();
+
+
+        // =================================================
+        // CREATE DEVICE NOTIFICATION
+        //
+        // ONLY when the state actually changes.
+        // =================================================
+
+        if (
+            previousDeviceState !==
+            newDeviceState
+        ) {
+
+            await createDeviceNotification({
+
+                userId:
+                    req.user.userId,
+
+                smartHome:
+                    smartHome,
+
+                device:
+                    device,
+
+                state:
+                    state,
+
+            });
+
+            console.log(
+                "DEVICE NOTIFICATION CREATED"
+            );
+        }
+
 
         console.log(
             `DEVICE STATE CHANGED: ` +
             `${device.name} | ` +
             `Relay: ${device.relay} | ` +
-            `isOn: ${device.isOn}`
+            `Previous: ${
+                previousDeviceState
+                    ? "ON"
+                    : "OFF"
+            } | ` +
+            `New: ${
+                newDeviceState
+                    ? "ON"
+                    : "OFF"
+            }`
         );
+
 
         console.log(
             "MongoDB document saved successfully."
@@ -1620,6 +1941,7 @@ async function controlDevice(
             "================================="
         );
 
+
         return res.json({
 
             success: true,
@@ -1628,6 +1950,7 @@ async function controlDevice(
                 `${device.name} turned ${state}`,
 
             device,
+
         });
 
     } catch (error) {
@@ -1640,16 +1963,12 @@ async function controlDevice(
     }
 }
 
+
 // =====================================================
 // DELETE DEVICE
 //
 // R1-R7 CAN BE DELETED
-//
-// However:
-// R7 deletion means the alarm device is removed.
-// The relay becomes available for a new alarm device.
-//
-// R8 cannot be deleted.
+// R8 CANNOT BE DELETED
 // =====================================================
 
 async function deleteDevice(
@@ -1663,10 +1982,16 @@ async function deleteDevice(
             deviceId,
         } = req.params;
 
+
+        // -------------------------------------------------
+        // FIND HOME
+        // -------------------------------------------------
+
         const access =
             await findUserSmartHome(
                 req.user.userId
             );
+
 
         if (!access) {
 
@@ -1676,12 +2001,15 @@ async function deleteDevice(
 
                 message:
                     "Smart home not found",
+
             });
         }
+
 
         const {
             smartHome,
         } = access;
+
 
         // -------------------------------------------------
         // PERMISSION
@@ -1693,6 +2021,7 @@ async function deleteDevice(
                 smartHome
             );
 
+
         if (!allowed) {
 
             return res.status(403).json({
@@ -1701,8 +2030,10 @@ async function deleteDevice(
 
                 message:
                     "You do not have permission to manage devices",
+
             });
         }
+
 
         // -------------------------------------------------
         // FIND DEVICE
@@ -1714,6 +2045,7 @@ async function deleteDevice(
                 smartHome._id
             );
 
+
         if (!device) {
 
             return res.status(404).json({
@@ -1722,8 +2054,10 @@ async function deleteDevice(
 
                 message:
                     "Device not found",
+
             });
         }
+
 
         // -------------------------------------------------
         // R8 PROTECTION
@@ -1740,12 +2074,14 @@ async function deleteDevice(
 
                 message:
                     "Water pump relay R8 cannot be deleted",
+
             });
         }
 
+
         // -------------------------------------------------
         // IF ALARM IS DELETED
-        // RESET ALARM STATUS
+        // RESET ALL ALARM STATES
         // -------------------------------------------------
 
         if (
@@ -1759,14 +2095,19 @@ async function deleteDevice(
             smartHome.alarmIsOn =
                 false;
 
+            smartHome.alarmSilenced =
+                false;
+
             await smartHome.save();
         }
 
+
         // -------------------------------------------------
-        // DELETE
+        // DELETE DEVICE
         // -------------------------------------------------
 
         await device.deleteOne();
+
 
         console.log(
             `DEVICE DELETED: ` +
@@ -1774,6 +2115,7 @@ async function deleteDevice(
             `Type: ${device.type} | ` +
             `Relay: ${device.relay}`
         );
+
 
         return res.json({
 
@@ -1784,6 +2126,7 @@ async function deleteDevice(
 
             freedRelay:
                 device.relay,
+
         });
 
     } catch (error) {
@@ -1795,6 +2138,7 @@ async function deleteDevice(
         );
     }
 }
+
 
 // =====================================================
 // CONTROL WATER PUMP R8
@@ -1810,6 +2154,7 @@ async function controlPump(
         const {
             state,
         } = req.body;
+
 
         console.log();
 
@@ -1835,8 +2180,9 @@ async function controlPump(
             state
         );
 
+
         // -------------------------------------------------
-        // VALIDATE
+        // VALIDATE STATE
         // -------------------------------------------------
 
         if (
@@ -1851,8 +2197,10 @@ async function controlPump(
 
                 message:
                     "State must be ON or OFF",
+
             });
         }
+
 
         // -------------------------------------------------
         // FIND HOME
@@ -1863,6 +2211,7 @@ async function controlPump(
                 req.user.userId
             );
 
+
         if (!access) {
 
             return res.status(404).json({
@@ -1871,12 +2220,15 @@ async function controlPump(
 
                 message:
                     "Smart home not found",
+
             });
         }
+
 
         const {
             smartHome,
         } = access;
+
 
         // -------------------------------------------------
         // PERMISSION
@@ -1888,6 +2240,7 @@ async function controlPump(
                 smartHome
             );
 
+
         if (!allowed) {
 
             return res.status(403).json({
@@ -1896,30 +2249,91 @@ async function controlPump(
 
                 message:
                     "You do not have permission to control the water pump",
+
             });
         }
 
-        console.log(
-            `PUMP BEFORE UPDATE: ` +
-            `R8 | pumpIsOn: ${smartHome.pumpIsOn}`
-        );
 
         // -------------------------------------------------
-        // UPDATE
+        // REMEMBER PREVIOUS STATE
+        // -------------------------------------------------
+
+        const previousPumpState =
+            smartHome.pumpIsOn === true;
+
+
+        const newPumpState =
+            state === "ON";
+
+
+        console.log(
+            `PUMP BEFORE UPDATE: ` +
+            `R8 | ` +
+            `pumpIsOn: ${
+                previousPumpState
+                    ? "ON"
+                    : "OFF"
+            }`
+        );
+
+
+        // -------------------------------------------------
+        // UPDATE PUMP STATE
         // -------------------------------------------------
 
         smartHome.pumpIsOn =
-            state === "ON";
+            newPumpState;
 
         smartHome.pumpRelay =
             PUMP_RELAY;
 
+
         await smartHome.save();
+
 
         console.log(
             `PUMP STATE CHANGED: ` +
-            `R8 | pumpIsOn: ${smartHome.pumpIsOn}`
+            `R8 | ` +
+            `Previous: ${
+                previousPumpState
+                    ? "ON"
+                    : "OFF"
+            } | ` +
+            `New: ${
+                newPumpState
+                    ? "ON"
+                    : "OFF"
+            }`
         );
+
+
+        // =================================================
+        // CREATE PUMP NOTIFICATION
+        //
+        // ONLY when state actually changes.
+        // =================================================
+
+        if (
+            previousPumpState !==
+            newPumpState
+        ) {
+
+            await createPumpNotification({
+
+                smartHome:
+                    smartHome,
+
+                state:
+                    state,
+
+            });
+
+
+            console.log(
+                "PUMP NOTIFICATION CREATED"
+            );
+        }
+
 
         console.log(
             "Pump MongoDB document saved successfully."
@@ -1928,6 +2342,7 @@ async function controlPump(
         console.log(
             "================================="
         );
+
 
         return res.json({
 
@@ -1946,7 +2361,9 @@ async function controlPump(
 
                 isOn:
                     smartHome.pumpIsOn === true,
+
             },
+
         });
 
     } catch (error) {
@@ -1959,27 +2376,167 @@ async function controlPump(
     }
 }
 
+
 // =====================================================
 // CONTROL ALARM R7
-//
-// This endpoint is kept for compatibility.
 //
 // ON  = Arm alarm
 // OFF = Disarm alarm
 //
-// The actual siren is triggered by the door sensor.
+// Actual siren is triggered by sensorController.
 // =====================================================
 
 async function controlAlarm(
     req,
     res
 ) {
-
     try {
-
         const {
             state,
         } = req.body;
+
+        console.log();
+        console.log("=================================");
+        console.log("CONTROL DOOR ALARM");
+        console.log("=================================");
+        console.log("User:", req.user.userId);
+        console.log("Requested state:", state);
+
+        // -------------------------------------------------
+        // VALIDATE
+        // -------------------------------------------------
+        if (!["ON", "OFF"].includes(state)) {
+            return res.status(400).json({
+                success: false,
+                message: "State must be ON or OFF",
+            });
+        }
+
+        // -------------------------------------------------
+        // FIND HOME
+        // -------------------------------------------------
+        const access = await findUserSmartHome(
+            req.user.userId
+        );
+
+        if (!access) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
+
+        const {
+            smartHome,
+        } = access;
+
+        // -------------------------------------------------
+        // PERMISSION
+        // -------------------------------------------------
+        const allowed = await canControlDevices(
+            req.user.userId,
+            smartHome
+        );
+
+        if (!allowed) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to control the alarm",
+            });
+        }
+
+        const previousAlarmState = smartHome.alarmEnabled === true;
+        const newAlarmState = state === "ON";
+
+        // -------------------------------------------------
+        // UPDATE SMARTHOME MODEL DIRECTLY
+        // -------------------------------------------------
+        smartHome.alarmEnabled = newAlarmState;
+        smartHome.alarmSilenced = false;
+
+        // Disarming stops the siren and clears silenced status
+        if (state === "OFF") {
+            smartHome.alarmIsOn = false;
+            smartHome.alarmSilenced = false;
+        }
+
+        await smartHome.save();
+
+        // -------------------------------------------------
+        // UPDATE DEVICE (IF REGISTERED, OPTIONAL)
+        // -------------------------------------------------
+        const alarmDevice = await Device.findOne({
+            home: smartHome._id,
+            relay: ALARM_RELAY,
+        });
+
+        if (alarmDevice) {
+            alarmDevice.isOn = newAlarmState;
+            await alarmDevice.save();
+        }
+
+        console.log(
+            `ALARM STATE CHANGED: R7 | ` +
+            `Previous Armed: ${previousAlarmState ? "ON" : "OFF"} | ` +
+            `New Armed: ${newAlarmState ? "ON" : "OFF"} | ` +
+            `Silenced: ${smartHome.alarmSilenced ? "YES" : "NO"} | ` +
+            `Siren: ${smartHome.alarmIsOn ? "ON" : "OFF"}`
+        );
+        console.log("=================================");
+
+        return res.json({
+            success: true,
+            message: `Door alarm ${state === "ON" ? "armed" : "disarmed"}`,
+            alarm: {
+                name: alarmDevice ? alarmDevice.name : "Door Alarm",
+                relay: ALARM_RELAY,
+                enabled: smartHome.alarmEnabled === true,
+                isOn: smartHome.alarmIsOn === true,
+                silenced: smartHome.alarmSilenced === true,
+            },
+            smartHome: {
+                alarmEnabled: smartHome.alarmEnabled === true,
+                alarmIsOn: smartHome.alarmIsOn === true,
+                alarmSilenced: smartHome.alarmSilenced === true,
+            },
+        });
+
+    } catch (error) {
+        handleDeviceError(
+            res,
+            error,
+            "Control Alarm Error"
+        );
+    }
+}
+
+
+// =====================================================
+// SILENCE ACTIVE ALARM
+//
+// IMPORTANT:
+//
+// This does NOT disarm the alarm.
+//
+// alarmEnabled remains TRUE.
+//
+// It only stops the current siren.
+//
+// Door can remain OPEN.
+//
+// When the door closes, sensorController will reset
+// alarmSilenced = false.
+//
+// If the door opens again later, the alarm can trigger
+// again.
+// =====================================================
+
+async function silenceAlarm(
+    req,
+    res
+) {
+
+    try {
 
         console.log();
 
@@ -1988,7 +2545,7 @@ async function controlAlarm(
         );
 
         console.log(
-            "CONTROL DOOR ALARM"
+            "SILENCE DOOR ALARM"
         );
 
         console.log(
@@ -2000,29 +2557,6 @@ async function controlAlarm(
             req.user.userId
         );
 
-        console.log(
-            "Requested state:",
-            state
-        );
-
-        // -------------------------------------------------
-        // VALIDATE
-        // -------------------------------------------------
-
-        if (
-            !["ON", "OFF"].includes(
-                state
-            )
-        ) {
-
-            return res.status(400).json({
-
-                success: false,
-
-                message:
-                    "State must be ON or OFF",
-            });
-        }
 
         // -------------------------------------------------
         // FIND HOME
@@ -2033,6 +2567,7 @@ async function controlAlarm(
                 req.user.userId
             );
 
+
         if (!access) {
 
             return res.status(404).json({
@@ -2041,12 +2576,15 @@ async function controlAlarm(
 
                 message:
                     "Smart home not found",
+
             });
         }
+
 
         const {
             smartHome,
         } = access;
+
 
         // -------------------------------------------------
         // PERMISSION
@@ -2058,6 +2596,7 @@ async function controlAlarm(
                 smartHome
             );
 
+
         if (!allowed) {
 
             return res.status(403).json({
@@ -2066,104 +2605,124 @@ async function controlAlarm(
 
                 message:
                     "You do not have permission to control the alarm",
+
             });
         }
 
+
         // -------------------------------------------------
-        // FIND R7 ALARM DEVICE
+        // ALARM MUST BE ENABLED
         // -------------------------------------------------
 
-        const alarm =
-            await Device.findOne({
+        if (
+            smartHome.alarmEnabled !== true
+        ) {
 
-                home:
-                    smartHome._id,
-
-                relay:
-                    ALARM_RELAY,
-
-                type:
-                    "alarm",
-
-            });
-
-        if (!alarm) {
-
-            return res.status(404).json({
+            return res.status(400).json({
 
                 success: false,
 
                 message:
-                    "Door alarm device has not been added yet",
+                    "Alarm is not armed",
+
             });
         }
 
+
         // -------------------------------------------------
-        // ARM / DISARM
+        // ALARM MUST CURRENTLY BE ACTIVE
         // -------------------------------------------------
 
-        alarm.isOn =
-            state === "ON";
-
-        smartHome.alarmEnabled =
-            state === "ON";
-
-        // Disarming immediately stops siren
         if (
-            state === "OFF"
+            smartHome.alarmIsOn !== true
         ) {
 
-            smartHome.alarmIsOn =
-                false;
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Door alarm is not currently active",
+
+            });
         }
 
-        await alarm.save();
+
+        // -------------------------------------------------
+        // SILENCE ALARM
+        //
+        // Keep alarmEnabled = true
+        // Stop siren
+        // Remember that user silenced it
+        // -------------------------------------------------
+
+        smartHome.alarmIsOn =
+            false;
+
+        smartHome.alarmSilenced =
+            true;
+
 
         await smartHome.save();
 
+
         console.log(
-            "ALARM DEVICE STATE:",
-            alarm.isOn
+            "DOOR ALARM SILENCED"
         );
 
         console.log(
-            "ALARM ENABLED:",
+            "Alarm Enabled:",
             smartHome.alarmEnabled
         );
 
         console.log(
-            "ALARM SIREN:",
+            "Alarm Silenced:",
+            smartHome.alarmSilenced
+        );
+
+        console.log(
+            "R7 Siren:",
             smartHome.alarmIsOn
+                ? "ON"
+                : "OFF"
+        );
+
+        console.log(
+            "Door Status:",
+            smartHome.doorStatus
         );
 
         console.log(
             "================================="
         );
 
+
         return res.json({
 
             success: true,
 
             message:
-                `Door alarm ${state === "ON" ? "armed" : "disarmed"}`,
+                "Door alarm silenced",
 
             alarm: {
 
                 name:
-                    alarm.name,
+                    "Door Alarm",
 
                 relay:
                     ALARM_RELAY,
 
                 enabled:
-                    alarm.isOn === true,
+                    smartHome.alarmEnabled === true,
 
                 isOn:
                     smartHome.alarmIsOn === true,
+
+                silenced:
+                    smartHome.alarmSilenced === true,
+
             },
 
-            device:
-                alarm,
         });
 
     } catch (error) {
@@ -2171,10 +2730,11 @@ async function controlAlarm(
         handleDeviceError(
             res,
             error,
-            "Control Alarm Error"
+            "Silence Alarm Error"
         );
     }
 }
+
 
 // =====================================================
 // EXPORT
@@ -2195,4 +2755,8 @@ module.exports = {
     controlPump,
 
     controlAlarm,
+
+    silenceAlarm,
+
 };
+

@@ -1,6 +1,13 @@
 const SmartHome = require("../models/SmartHome");
+const Sensor = require("../models/Sensor");
+const Member = require("../models/Member");
+
+const {
+    createDoorAlarmNotification,
+} = require("./notificationController");
 
 console.log("SENSOR CONTROLLER LOADED");
+
 
 // =====================================================
 // RECEIVE SENSOR DATA FROM ESP32
@@ -29,6 +36,7 @@ async function receiveSensorData(req, res) {
             doorStatus,
         } = req.body;
 
+
         console.log();
         console.log("==============================");
         console.log("ESP32 SENSOR DATA RECEIVED");
@@ -39,6 +47,7 @@ async function receiveSensorData(req, res) {
         console.log("Humidity:", humidity);
         console.log("Door:", doorStatus);
 
+
         // =================================================
         // VALIDATE ESP32 ID
         // =================================================
@@ -46,13 +55,19 @@ async function receiveSensorData(req, res) {
         if (!esp32Id) {
 
             return res.status(400).json({
+
                 success: false,
-                message: "ESP32 ID is required",
+
+                message:
+                    "ESP32 ID is required",
+
             });
         }
 
+
         const cleanEsp32Id =
             String(esp32Id).trim();
+
 
         // =================================================
         // VALIDATE TEMPERATURE
@@ -61,20 +76,23 @@ async function receiveSensorData(req, res) {
         const numericTemperature =
             Number(temperature);
 
+
         if (
             temperature === undefined ||
             temperature === null ||
-            !Number.isFinite(
-                numericTemperature
-            )
+            !Number.isFinite(numericTemperature)
         ) {
 
             return res.status(400).json({
+
                 success: false,
+
                 message:
                     "Valid temperature is required",
+
             });
         }
+
 
         // =================================================
         // VALIDATE HUMIDITY
@@ -83,20 +101,23 @@ async function receiveSensorData(req, res) {
         const numericHumidity =
             Number(humidity);
 
+
         if (
             humidity === undefined ||
             humidity === null ||
-            !Number.isFinite(
-                numericHumidity
-            )
+            !Number.isFinite(numericHumidity)
         ) {
 
             return res.status(400).json({
+
                 success: false,
+
                 message:
                     "Valid humidity is required",
+
             });
         }
+
 
         // =================================================
         // VALIDATE DOOR STATUS
@@ -107,6 +128,7 @@ async function receiveSensorData(req, res) {
                 .trim()
                 .toLowerCase();
 
+
         if (
             !["open", "closed"].includes(
                 normalizedDoorStatus
@@ -114,11 +136,15 @@ async function receiveSensorData(req, res) {
         ) {
 
             return res.status(400).json({
+
                 success: false,
+
                 message:
                     'Door status must be either "open" or "closed"',
+
             });
         }
+
 
         // =================================================
         // FIND PAIRED SMART HOME
@@ -126,8 +152,12 @@ async function receiveSensorData(req, res) {
 
         const smartHome =
             await SmartHome.findOne({
-                esp32Id: cleanEsp32Id,
+
+                esp32Id:
+                    cleanEsp32Id,
+
             });
+
 
         if (!smartHome) {
 
@@ -137,11 +167,15 @@ async function receiveSensorData(req, res) {
             );
 
             return res.status(404).json({
+
                 success: false,
+
                 message:
                     "ESP32 is not paired with any Smart Home",
+
             });
         }
+
 
         console.log(
             "Smart Home:",
@@ -153,8 +187,44 @@ async function receiveSensorData(req, res) {
             smartHome._id.toString()
         );
 
+
         // =================================================
-        // SAVE SENSOR DATA
+        // SAVE HISTORICAL SENSOR READING
+        // =================================================
+
+        const sensor =
+            await Sensor.create({
+
+                smartHome:
+                    smartHome._id,
+
+                esp32Id:
+                    cleanEsp32Id,
+
+                temperature:
+                    numericTemperature,
+
+                humidity:
+                    numericHumidity,
+
+                doorStatus:
+                    normalizedDoorStatus,
+
+            });
+
+
+        console.log(
+            "Historical sensor reading saved successfully."
+        );
+
+        console.log(
+            "Sensor ID:",
+            sensor._id.toString()
+        );
+
+
+        // =================================================
+        // UPDATE LATEST SENSOR DATA
         // =================================================
 
         smartHome.temperature =
@@ -169,6 +239,7 @@ async function receiveSensorData(req, res) {
         smartHome.sensorLastUpdated =
             new Date();
 
+
         // =================================================
         // UPDATE ESP32 CONNECTION
         // =================================================
@@ -179,82 +250,281 @@ async function receiveSensorData(req, res) {
         smartHome.lastSeen =
             new Date();
 
+
+        // =================================================
+        // REMEMBER PREVIOUS ALARM STATE
+        // =================================================
+
+        const alarmWasAlreadyOn =
+            smartHome.alarmIsOn === true;
+
+
         // =================================================
         // DOOR ALARM LOGIC
         //
-        // R7 = DOOR ALARM
+        // alarmEnabled:
+        //     true  = alarm system armed
+        //     false = alarm system disabled
         //
-        // Alarm enabled + Door open
-        //          ↓
-        //      R7 = ON
+        // alarmSilenced:
+        //     true  = current alarm has been silenced
+        //     false = alarm may trigger
         //
-        // Alarm disabled
-        //          ↓
-        //      R7 = OFF
-        //
-        // Door closed
-        //          ↓
-        //      R7 = OFF
-        //
+        // alarmIsOn:
+        //     true  = R7 should be ON
+        //     false = R7 should be OFF
+        // =================================================
+
+
+        // =================================================
+        // ALARM ENABLED
         // =================================================
 
         if (
             smartHome.alarmEnabled === true
         ) {
 
+
+            // =================================================
+            // DOOR OPEN
+            // =================================================
+
             if (
                 normalizedDoorStatus === "open"
             ) {
 
-                smartHome.alarmIsOn =
-                    true;
 
-                console.log();
-                console.log("==============================");
-                console.log("DOOR ALARM TRIGGERED");
-                console.log("==============================");
+                // =================================================
+                // ALARM HAS NOT BEEN SILENCED
+                // =================================================
 
-                console.log(
-                    "Alarm Enabled: TRUE"
-                );
+                if (
+                    smartHome.alarmSilenced !== true
+                ) {
 
-                console.log(
-                    "Door Status: OPEN"
-                );
+                    smartHome.alarmIsOn =
+                        true;
 
-                console.log(
-                    "R7 Alarm: ON"
-                );
 
-                console.log("==============================");
+                    // =================================================
+                    // CREATE NOTIFICATION ONLY ON FIRST TRIGGER
+                    // =================================================
 
-            } else {
+                    if (
+                        !alarmWasAlreadyOn
+                    ) {
+
+                        await createDoorAlarmNotification({
+
+                            smartHome:
+                                smartHome,
+
+                        });
+
+                        console.log(
+                            "DOOR ALARM NOTIFICATION CREATED"
+                        );
+                    }
+
+
+                    console.log();
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "DOOR ALARM TRIGGERED"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "Alarm Enabled: TRUE"
+                    );
+
+                    console.log(
+                        "Alarm Silenced: FALSE"
+                    );
+
+                    console.log(
+                        "Door Status: OPEN"
+                    );
+
+                    console.log(
+                        "R7 Alarm: ON"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+
+                }
+
+
+                // =================================================
+                // ALARM HAS BEEN SILENCED
+                // =================================================
+
+                else {
+
+                    smartHome.alarmIsOn =
+                        false;
+
+
+                    console.log();
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "DOOR ALARM SILENCED"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "Alarm Enabled: TRUE"
+                    );
+
+                    console.log(
+                        "Alarm Silenced: TRUE"
+                    );
+
+                    console.log(
+                        "Door Status: OPEN"
+                    );
+
+                    console.log(
+                        "R7 Alarm: OFF"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+                }
+
+            }
+
+
+            // =================================================
+            // DOOR CLOSED
+            // =================================================
+
+            else {
 
                 smartHome.alarmIsOn =
                     false;
 
+
+                // -------------------------------------------------
+                // RESET SILENCE
+                //
+                // Once the door is closed, the current alarm
+                // event has ended.
+                //
+                // The next door opening can trigger the alarm
+                // again.
+                // -------------------------------------------------
+
+                smartHome.alarmSilenced =
+                    false;
+
+
+                console.log();
                 console.log(
-                    "Alarm enabled but door is closed."
+                    "=============================="
+                );
+
+                console.log(
+                    "DOOR CLOSED"
+                );
+
+                console.log(
+                    "=============================="
+                );
+
+                console.log(
+                    "Alarm Enabled:",
+                    smartHome.alarmEnabled
+                );
+
+                console.log(
+                    "Alarm Silenced: FALSE"
+                );
+
+                console.log(
+                    "Door Status: CLOSED"
                 );
 
                 console.log(
                     "R7 Alarm: OFF"
                 );
+
+                console.log(
+                    "=============================="
+                );
             }
 
-        } else {
+        }
+
+
+        // =================================================
+        // ALARM DISABLED
+        // =================================================
+
+        else {
 
             smartHome.alarmIsOn =
                 false;
 
+
+            // -------------------------------------------------
+            // RESET SILENCE
+            // -------------------------------------------------
+
+            smartHome.alarmSilenced =
+                false;
+
+
+            console.log();
             console.log(
-                "Alarm is disabled."
+                "=============================="
+            );
+
+            console.log(
+                "ALARM DISABLED"
+            );
+
+            console.log(
+                "=============================="
+            );
+
+            console.log(
+                "Alarm Enabled: FALSE"
+            );
+
+            console.log(
+                "Alarm Silenced: FALSE"
+            );
+
+            console.log(
+                "Door Status:",
+                normalizedDoorStatus
             );
 
             console.log(
                 "R7 Alarm: OFF"
             );
+
+            console.log(
+                "=============================="
+            );
         }
+
 
         // =================================================
         // SAVE SMART HOME
@@ -262,11 +532,13 @@ async function receiveSensorData(req, res) {
 
         await smartHome.save();
 
+
         // =================================================
         // SUCCESS LOG
         // =================================================
 
         console.log();
+
         console.log(
             "SENSOR DATA SAVED SUCCESSFULLY"
         );
@@ -304,6 +576,11 @@ async function receiveSensorData(req, res) {
         );
 
         console.log(
+            "Alarm Silenced:",
+            smartHome.alarmSilenced
+        );
+
+        console.log(
             "R7 Alarm:",
             smartHome.alarmIsOn
                 ? "ON"
@@ -324,8 +601,9 @@ async function receiveSensorData(req, res) {
             "=============================="
         );
 
+
         // =================================================
-        // RESPONSE
+        // RESPONSE TO ESP32
         // =================================================
 
         return res.status(200).json({
@@ -351,6 +629,7 @@ async function receiveSensorData(req, res) {
 
                 sensorLastUpdated:
                     smartHome.sensorLastUpdated,
+
             },
 
             alarm: {
@@ -364,9 +643,14 @@ async function receiveSensorData(req, res) {
                 enabled:
                     smartHome.alarmEnabled === true,
 
+                silenced:
+                    smartHome.alarmSilenced === true,
+
                 isOn:
                     smartHome.alarmIsOn === true,
+
             },
+
         });
 
     } catch (error) {
@@ -377,20 +661,23 @@ async function receiveSensorData(req, res) {
         );
 
         return res.status(500).json({
+
             success: false,
-            message: "Server error",
+
+            message:
+                "Server error",
+
         });
     }
 }
 
 
 // =====================================================
-// GET SENSOR DATA
+// GET SENSOR DATA BY ESP32 ID
 //
 // GET /esp32/sensors/:esp32Id
 //
-// Used by Flutter
-//
+// Existing endpoint.
 // =====================================================
 
 async function getSensorData(
@@ -404,6 +691,7 @@ async function getSensorData(
             esp32Id,
         } = req.params;
 
+
         // =================================================
         // VALIDATE ESP32 ID
         // =================================================
@@ -411,14 +699,19 @@ async function getSensorData(
         if (!esp32Id) {
 
             return res.status(400).json({
+
                 success: false,
+
                 message:
                     "ESP32 ID is required",
+
             });
         }
 
+
         const cleanEsp32Id =
             String(esp32Id).trim();
+
 
         // =================================================
         // FIND SMART HOME
@@ -426,17 +719,25 @@ async function getSensorData(
 
         const smartHome =
             await SmartHome.findOne({
-                esp32Id: cleanEsp32Id,
+
+                esp32Id:
+                    cleanEsp32Id,
+
             });
+
 
         if (!smartHome) {
 
             return res.status(404).json({
+
                 success: false,
+
                 message:
                     "ESP32 is not paired with any Smart Home",
+
             });
         }
+
 
         // =================================================
         // RESPONSE
@@ -463,6 +764,7 @@ async function getSensorData(
                 sensorLastUpdated:
                     smartHome.sensorLastUpdated ??
                     null,
+
             },
 
             alarm: {
@@ -476,8 +778,12 @@ async function getSensorData(
                 enabled:
                     smartHome.alarmEnabled === true,
 
+                silenced:
+                    smartHome.alarmSilenced === true,
+
                 isOn:
                     smartHome.alarmIsOn === true,
+
             },
 
             smartHome: {
@@ -497,7 +803,9 @@ async function getSensorData(
                 lastSeen:
                     smartHome.lastSeen ??
                     null,
+
             },
+
         });
 
     } catch (error) {
@@ -508,8 +816,334 @@ async function getSensorData(
         );
 
         return res.status(500).json({
+
             success: false,
-            message: "Server error",
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// GET SENSOR DATA FOR LOGGED-IN USER
+//
+// GET /user/sensors
+//
+// Flutter uses this endpoint.
+//
+// Finds Smart Home using:
+//
+// 1. Accepted Member
+// 2. Owner
+//
+// =====================================================
+
+async function getUserSensorData(
+    req,
+    res
+) {
+
+    try {
+
+        // =================================================
+        // GET LOGGED-IN USER
+        // =================================================
+
+        const userId =
+            req.user.userId;
+
+
+        console.log();
+
+        console.log(
+            "=============================="
+        );
+
+        console.log(
+            "GET USER SENSOR DATA"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "=============================="
+        );
+
+
+        // =================================================
+        // FIND ACCEPTED MEMBERSHIP
+        // =================================================
+
+        const membership =
+            await Member.findOne({
+
+                user:
+                    userId,
+
+                status:
+                    "accepted",
+
+            }).populate(
+                "smartHome"
+            );
+
+
+        let smartHome = null;
+
+
+        // =================================================
+        // ACCEPTED MEMBER
+        // =================================================
+
+        if (
+            membership &&
+            membership.smartHome
+        ) {
+
+            smartHome =
+                membership.smartHome;
+
+
+            console.log(
+                "Using accepted member Smart Home:",
+                smartHome.name
+            );
+        }
+
+
+        // =================================================
+        // OWNER
+        // =================================================
+
+        if (!smartHome) {
+
+            smartHome =
+                await SmartHome.findOne({
+
+                    owner:
+                        userId,
+
+                }).sort({
+
+                    updatedAt:
+                        -1,
+
+                    createdAt:
+                        -1,
+
+                });
+
+
+            if (smartHome) {
+
+                console.log(
+                    "Using owned Smart Home:",
+                    smartHome.name
+                );
+            }
+        }
+
+
+        // =================================================
+        // SMART HOME NOT FOUND
+        // =================================================
+
+        if (!smartHome) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        // =================================================
+        // GET LATEST SENSOR READING
+        //
+        // SmartHome already contains latest values.
+        // Sensor collection contains historical readings.
+        // =================================================
+
+        const latestSensor =
+            await Sensor.findOne({
+
+                smartHome:
+                    smartHome._id,
+
+            }).sort({
+
+                createdAt:
+                    -1,
+
+            });
+
+
+        // =================================================
+        // USE LATEST SENSOR DOCUMENT IF AVAILABLE
+        //
+        // SmartHome values are preferred.
+        // Historical Sensor document is fallback.
+        // =================================================
+
+        const temperature =
+            smartHome.temperature ??
+            latestSensor?.temperature ??
+            null;
+
+
+        const humidity =
+            smartHome.humidity ??
+            latestSensor?.humidity ??
+            null;
+
+
+        const doorStatus =
+            smartHome.doorStatus ??
+            latestSensor?.doorStatus ??
+            null;
+
+
+        const sensorLastUpdated =
+            smartHome.sensorLastUpdated ??
+            latestSensor?.createdAt ??
+            null;
+
+
+        // =================================================
+        // RESPONSE LOG
+        // =================================================
+
+        console.log(
+            "Temperature:",
+            temperature
+        );
+
+        console.log(
+            "Humidity:",
+            humidity
+        );
+
+        console.log(
+            "Door:",
+            doorStatus
+        );
+
+        console.log(
+            "Alarm Enabled:",
+            smartHome.alarmEnabled
+        );
+
+        console.log(
+            "Alarm Silenced:",
+            smartHome.alarmSilenced
+        );
+
+        console.log(
+            "Alarm Running:",
+            smartHome.alarmIsOn
+        );
+
+        console.log(
+            "ESP32 Status:",
+            smartHome.status
+        );
+
+        console.log(
+            "=============================="
+        );
+
+
+        // =================================================
+        // RESPONSE
+        // =================================================
+
+        return res.status(200).json({
+
+            success: true,
+
+            sensors: {
+
+                temperature:
+                    temperature,
+
+                humidity:
+                    humidity,
+
+                doorStatus:
+                    doorStatus,
+
+                sensorLastUpdated:
+                    sensorLastUpdated,
+
+            },
+
+            alarm: {
+
+                name:
+                    "Door Alarm",
+
+                relay:
+                    "R7",
+
+                enabled:
+                    smartHome.alarmEnabled === true,
+
+                silenced:
+                    smartHome.alarmSilenced === true,
+
+                isOn:
+                    smartHome.alarmIsOn === true,
+
+            },
+
+            smartHome: {
+
+                id:
+                    smartHome._id,
+
+                name:
+                    smartHome.name,
+
+                esp32Id:
+                    smartHome.esp32Id ??
+                    null,
+
+                status:
+                    smartHome.status ??
+                    null,
+
+                lastSeen:
+                    smartHome.lastSeen ??
+                    null,
+
+            },
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "GET USER SENSOR DATA ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
         });
     }
 }
@@ -520,6 +1154,12 @@ async function getSensorData(
 // =====================================================
 
 module.exports = {
+
     receiveSensorData,
+
     getSensorData,
+
+    getUserSensorData,
+
 };
+
