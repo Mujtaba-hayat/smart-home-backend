@@ -1,0 +1,8380 @@
+﻿=== FILE: F:\finalyearproject\backend\controllers\analyticsController.js ===
+const Device = require("../models/Device");
+const SmartHome = require("../models/SmartHome");
+const Member = require("../models/Member");
+const Sensor = require("../models/Sensor");
+
+
+// =====================================================
+// FIND USER SMART HOME
+// =====================================================
+
+async function findUserSmartHome(userId) {
+
+    // -------------------------------------------------
+    // FIRST: ACCEPTED MEMBER
+    // -------------------------------------------------
+
+    const membership =
+        await Member.findOne({
+            user: userId,
+            status: "accepted",
+        }).populate("smartHome");
+
+
+    if (
+        membership &&
+        membership.smartHome
+    ) {
+
+        return membership.smartHome;
+    }
+
+
+    // -------------------------------------------------
+    // SECOND: OWNER
+    // -------------------------------------------------
+
+    const smartHome =
+        await SmartHome.findOne({
+            owner: userId,
+        }).sort({
+            updatedAt: -1,
+            createdAt: -1,
+        });
+
+
+    return smartHome;
+}
+
+
+// =====================================================
+// GET ANALYTICS
+//
+// GET /user/analytics
+//
+// Provides:
+//
+// - Smart home information
+// - Device count
+// - Devices ON
+// - Devices OFF
+// - Pump state
+// - Estimated pump power
+// - Estimated energy usage
+// - Estimated cost
+// - Latest sensor information
+//
+// =====================================================
+
+async function getAnalytics(req, res) {
+
+    try {
+
+        const userId =
+            req.user.userId;
+
+
+        console.log();
+        console.log("=================================");
+        console.log("GET SMART HOME ANALYTICS");
+        console.log("=================================");
+        console.log(
+            "User:",
+            userId
+        );
+
+
+        // =================================================
+        // FIND SMART HOME
+        // =================================================
+
+        const smartHome =
+            await findUserSmartHome(
+                userId
+            );
+
+
+        if (!smartHome) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        // =================================================
+        // GET DEVICES
+        // =================================================
+
+        const devices =
+            await Device.find({
+
+                home:
+                    smartHome._id,
+
+            });
+
+
+        // =================================================
+        // DEVICE STATISTICS
+        // =================================================
+
+        const totalDevices =
+            devices.length;
+
+
+        const devicesOn =
+            devices.filter(
+                device =>
+                    device.isOn === true &&
+                    device.relay !== "R7"
+            ).length;
+
+
+        const devicesOff =
+            totalDevices -
+            devicesOn;
+
+
+        // =================================================
+        // WATER PUMP
+        // =================================================
+
+        const pumpIsOn =
+            smartHome.pumpIsOn === true;
+
+
+        // =================================================
+        // PUMP POWER
+        //
+        // Your FYP uses a 550W water pump.
+        // =================================================
+
+        const pumpPowerWatts =
+            550;
+
+
+        const pumpPowerKW =
+            pumpPowerWatts / 1000;
+
+
+        // =================================================
+        // ESTIMATED ENERGY
+        //
+        // Theoretical energy consumed in one hour
+        // if the pump runs continuously.
+        // =================================================
+
+        const energyPerHour =
+            pumpPowerKW;
+
+
+        // =================================================
+        // ELECTRICITY RATE
+        //
+        // Configured rate:
+        // 65 PKR per kWh
+        // =================================================
+
+        const electricityRate =
+            65;
+
+
+        const costPerHour =
+            energyPerHour *
+            electricityRate;
+
+
+        // =================================================
+        // GET LATEST SENSOR READING
+        //
+        // Sensor data is stored in the Sensor collection.
+        //
+        // We retrieve the newest reading belonging
+        // to this Smart Home.
+        // =================================================
+
+        const latestSensor =
+            await Sensor.findOne({
+
+                smartHome:
+                    smartHome._id,
+
+            }).sort({
+
+                createdAt:
+                    -1,
+
+            });
+
+
+        // =================================================
+        // SENSOR DATA
+        // =================================================
+
+        const temperature =
+            latestSensor?.temperature ??
+            null;
+
+
+        const humidity =
+            latestSensor?.humidity ??
+            null;
+
+
+        const doorStatus =
+            latestSensor?.doorStatus ??
+            null;
+
+
+        const sensorLastUpdated =
+            latestSensor?.createdAt ??
+            null;
+
+
+        // =================================================
+        // LOG ANALYTICS
+        // =================================================
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+
+        console.log(
+            "Smart Home ID:",
+            smartHome._id.toString()
+        );
+
+
+        console.log(
+            "Total Devices:",
+            totalDevices
+        );
+
+
+        console.log(
+            "Devices ON:",
+            devicesOn
+        );
+
+
+        console.log(
+            "Devices OFF:",
+            devicesOff
+        );
+
+
+        console.log(
+            "Pump:",
+            pumpIsOn
+                ? "ON"
+                : "OFF"
+        );
+
+
+        console.log(
+            "Pump Power:",
+            pumpPowerWatts,
+            "W"
+        );
+
+
+        console.log(
+            "Temperature:",
+            temperature
+        );
+
+
+        console.log(
+            "Humidity:",
+            humidity
+        );
+
+
+        console.log(
+            "Door Status:",
+            doorStatus
+        );
+
+
+        console.log(
+            "Sensor Last Updated:",
+            sensorLastUpdated
+        );
+
+
+        console.log(
+            "================================="
+        );
+
+
+        // =================================================
+        // RESPONSE
+        // =================================================
+
+        return res.json({
+
+            success: true,
+
+
+            // =============================================
+            // SMART HOME
+            // =============================================
+
+            smartHome: {
+
+                id:
+                    smartHome._id,
+
+                name:
+                    smartHome.name,
+
+                status:
+                    smartHome.status,
+
+                esp32Id:
+                    smartHome.esp32Id ||
+                    null,
+
+            },
+
+
+            // =============================================
+            // DEVICE ANALYTICS
+            // =============================================
+
+            devices: {
+
+                total:
+                    totalDevices,
+
+                on:
+                    devicesOn,
+
+                off:
+                    devicesOff,
+
+            },
+
+
+            // =============================================
+            // WATER PUMP ANALYTICS
+            // =============================================
+
+            pump: {
+
+                relay:
+                    "R8",
+
+                isOn:
+                    pumpIsOn,
+
+                powerWatts:
+                    pumpPowerWatts,
+
+                powerKW:
+                    pumpPowerKW,
+
+                estimatedEnergyPerHour:
+                    energyPerHour,
+
+                electricityRate:
+                    electricityRate,
+
+                estimatedCostPerHour:
+                    costPerHour,
+
+            },
+
+
+            // =============================================
+            // SENSOR ANALYTICS
+            // =============================================
+
+            sensors: {
+
+                temperature:
+                    temperature,
+
+                humidity:
+                    humidity,
+
+                doorStatus:
+                    doorStatus,
+
+                lastUpdated:
+                    sensorLastUpdated,
+
+            },
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "GET ANALYTICS ERROR:",
+            error
+        );
+
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = {
+
+    getAnalytics,
+
+};
+
+
+
+=== FILE: F:\finalyearproject\backend\controllers\authController.js ===
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+require("dotenv").config();
+
+const User = require("../models/User");
+const SmartHome = require("../models/SmartHome");
+const Device = require("../models/Device");
+
+const {
+    sendResetCodeEmail,
+} = require("../utils/emailService");
+
+// =====================================================
+// Register User
+// =====================================================
+
+async function registerUser(req, res) {
+    try {
+        const { fullName, email, password } = req.body;
+
+        console.log("REGISTER BODY:", req.body);
+
+        if (!fullName || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "Full name, email and password are required",
+            });
+        }
+
+        const normalizedEmail =
+            email.toLowerCase().trim();
+
+        const existingUser = await User.findOne({
+            email: normalizedEmail,
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                success: false,
+                message: "User with this email already exists",
+            });
+        }
+
+        const hashedPassword =
+            await bcrypt.hash(password, 10);
+
+        const user = await User.create({
+            fullName: fullName.trim(),
+            email: normalizedEmail,
+            password: hashedPassword,
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "User registered successfully",
+
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+            },
+        });
+
+    } catch (error) {
+        console.error(
+            "Registration Error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+// =====================================================
+// Login User
+// =====================================================
+
+async function loginUser(req, res) {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "Email and password are required",
+            });
+        }
+
+        const normalizedEmail =
+            email.toLowerCase().trim();
+
+        const user = await User.findOne({
+            email: normalizedEmail,
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid email or password",
+            });
+        }
+
+        const passwordMatch =
+            await bcrypt.compare(
+                password,
+                user.password
+            );
+
+        if (!passwordMatch) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid email or password",
+            });
+        }
+
+        const token = jwt.sign(
+            {
+                userId: user._id,
+                email: user.email,
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "7d",
+            }
+        );
+
+        return res.json({
+            success: true,
+            message: "Login successful",
+
+            token,
+
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+            },
+        });
+
+    } catch (error) {
+        console.error(
+            "Login Error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+// =====================================================
+// Forgot Password
+// =====================================================
+
+async function forgotPassword(req, res) {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: "Email is required",
+            });
+        }
+
+        const normalizedEmail =
+            email.toLowerCase().trim();
+
+        const user = await User.findOne({
+            email: normalizedEmail,
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "No account found with this email",
+            });
+        }
+
+        // Generate 6-digit reset code
+
+        const resetCode =
+            Math.floor(
+                100000 +
+                Math.random() * 900000
+            ).toString();
+
+        // Code valid for 10 minutes
+
+        const expiresAt =
+            new Date(
+                Date.now() +
+                10 * 60 * 1000
+            );
+
+        user.resetPasswordCode =
+            resetCode;
+
+        user.resetPasswordCodeExpires =
+            expiresAt;
+
+        await user.save();
+
+        // Send reset code
+
+        await sendResetCodeEmail(
+            user.email,
+            resetCode
+        );
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "PASSWORD RESET CODE"
+        );
+
+        console.log(
+            "Email:",
+            user.email
+        );
+
+        console.log(
+            "Code:",
+            resetCode
+        );
+
+        console.log(
+            "Expires:",
+            expiresAt
+        );
+
+        console.log(
+            "Email sent successfully."
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Password reset code sent to your email",
+        });
+
+    } catch (error) {
+        console.error(
+            "Forgot Password Error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Unable to send password reset code",
+        });
+    }
+}
+
+// =====================================================
+// Reset Password
+// =====================================================
+
+async function resetPassword(req, res) {
+    try {
+        const {
+            email,
+            code,
+            newPassword,
+        } = req.body;
+
+        if (
+            !email ||
+            !code ||
+            !newPassword
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Email, reset code and new password are required",
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Password must be at least 6 characters",
+            });
+        }
+
+        const normalizedEmail =
+            email.toLowerCase().trim();
+
+        const normalizedCode =
+            code.toString().trim();
+
+        const user =
+            await User.findOne({
+                email: normalizedEmail,
+            });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found",
+            });
+        }
+
+        if (!user.resetPasswordCode) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "No password reset request found",
+            });
+        }
+
+        if (
+            !user.resetPasswordCodeExpires ||
+            user.resetPasswordCodeExpires.getTime() <
+                Date.now()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Reset code has expired. Please request a new code.",
+            });
+        }
+
+        if (
+            user.resetPasswordCode !==
+            normalizedCode
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Invalid reset code",
+            });
+        }
+
+        // Hash new password
+
+        const hashedPassword =
+            await bcrypt.hash(
+                newPassword,
+                10
+            );
+
+        user.password =
+            hashedPassword;
+
+        // Clear reset information
+
+        user.resetPasswordCode =
+            null;
+
+        user.resetPasswordCodeExpires =
+            null;
+
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Password reset successfully. Please login with your new password.",
+        });
+
+    } catch (error) {
+        console.error(
+            "Reset Password Error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+// =====================================================
+// Delete Account Permanently
+// =====================================================
+//
+// Deletes:
+// 1. All devices belonging to the user's Smart Home
+// 2. Smart Home
+// 3. User account
+//
+// The ESP32 hardware is NOT deleted.
+//
+// The ESP32 ID is released from MongoDB because the
+// SmartHome document containing that ESP32 ID is deleted.
+//
+// =====================================================
+
+async function deleteAccount(req, res) {
+    try {
+
+        // =============================================
+        // Get password
+        // =============================================
+
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Password is required",
+            });
+        }
+
+        // =============================================
+        // Get logged-in user
+        // =============================================
+
+        const user =
+            await User.findById(
+                req.user.userId
+            );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "User not found",
+            });
+        }
+
+        // =============================================
+        // Verify password
+        // =============================================
+
+        const passwordMatch =
+            await bcrypt.compare(
+                password,
+                user.password
+            );
+
+        if (!passwordMatch) {
+            return res.status(401).json({
+                success: false,
+                message:
+                    "Incorrect password",
+            });
+        }
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "ACCOUNT DELETION REQUEST"
+        );
+
+        console.log(
+            "User:",
+            user.email
+        );
+
+        // =============================================
+        // Find Smart Home
+        // =============================================
+
+        const smartHome =
+            await SmartHome.findOne({
+                owner: user._id,
+            });
+
+        // =============================================
+        // Delete Smart Home Devices
+        // =============================================
+
+        if (smartHome) {
+
+            console.log(
+                "Smart Home:",
+                smartHome.name
+            );
+
+            console.log(
+                "ESP32 ID:",
+                smartHome.esp32Id
+            );
+
+            const deletedDevices =
+                await Device.deleteMany({
+                    home: smartHome._id,
+                });
+
+            console.log(
+                "Devices deleted:",
+                deletedDevices.deletedCount
+            );
+
+            // =========================================
+            // Delete Smart Home
+            // =========================================
+
+            await SmartHome.deleteOne({
+                _id: smartHome._id,
+            });
+
+            console.log(
+                "Smart Home deleted."
+            );
+
+        } else {
+
+            console.log(
+                "No Smart Home found for user."
+            );
+        }
+
+        // =============================================
+        // Delete User
+        // =============================================
+
+        await User.deleteOne({
+            _id: user._id,
+        });
+
+        console.log(
+            "User account deleted:",
+            user.email
+        );
+
+        console.log(
+            "================================="
+        );
+
+        // =============================================
+        // Response
+        // =============================================
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Account, Smart Home and all associated devices deleted permanently",
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Delete Account Error:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Unable to delete account",
+        });
+    }
+}
+
+// =====================================================
+// EXPORTS
+// =====================================================
+
+module.exports = {
+    registerUser,
+    loginUser,
+    forgotPassword,
+    resetPassword,
+    deleteAccount,
+};
+
+
+=== FILE: F:\finalyearproject\backend\controllers\automationController.js ===
+const storage = require("../data/storage");
+
+// ===============================
+// Create Automation
+// ===============================
+
+function createAutomation(req, res) {
+const {
+  deviceId,
+  deviceName,
+  time,
+  turnOn,
+  repeatDays,
+  durationMinutes,
+} = req.body;
+
+  // Validation
+  if (
+    !deviceId ||
+    !deviceName ||
+    !time ||
+    !Array.isArray(repeatDays)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid automation data",
+    });
+  }
+
+  // Check duplicate
+  const duplicate = storage.automations.find((automation) => {
+    const sameDays =
+      automation.repeatDays.length === repeatDays.length &&
+      automation.repeatDays.every((day) =>
+        repeatDays.includes(day)
+      );
+
+    return (
+      automation.deviceId === deviceId &&
+      automation.time === time &&
+      automation.turnOn === turnOn &&
+      sameDays
+    );
+  });
+
+  if (duplicate) {
+    return res.status(409).json({
+      success: false,
+      message: "Automation already exists",
+    });
+  }
+
+const automation = {
+  id: Date.now().toString(),
+  deviceId,
+  deviceName,
+  time,
+  turnOn,
+  repeatDays,
+  durationMinutes: durationMinutes || null,
+  enabled: true,
+};
+
+  storage.automations.push(automation);
+
+  res.status(201).json({
+    success: true,
+    message: "Automation created successfully",
+    automation,
+  });
+}
+
+// ===============================
+// Get All Automations
+// ===============================
+
+function getAutomations(req, res) {
+  res.json({
+    success: true,
+    automations: storage.automations,
+  });
+}
+
+// ===============================
+// Update Automation
+// ===============================
+
+function updateAutomation(req, res) {
+  const { id } = req.params;
+const {
+  deviceId,
+  deviceName,
+  time,
+  turnOn,
+  repeatDays,
+  durationMinutes,
+} = req.body;
+
+  // Validation
+  if (
+    !deviceId ||
+    !deviceName ||
+    !time ||
+    !Array.isArray(repeatDays)
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid automation data",
+    });
+  }
+
+  // Find automation
+  const automation = storage.automations.find(
+    (item) => item.id === id
+  );
+
+  if (!automation) {
+    return res.status(404).json({
+      success: false,
+      message: "Automation not found",
+    });
+  }
+
+  // Duplicate check (ignore current automation)
+  const duplicate = storage.automations.find((item) => {
+    const sameDays =
+      item.repeatDays.length === repeatDays.length &&
+      item.repeatDays.every((day) =>
+        repeatDays.includes(day)
+      );
+
+    return (
+      item.id !== id &&
+      item.deviceId === deviceId &&
+      item.time === time &&
+      item.turnOn === turnOn &&
+      sameDays
+    );
+  });
+
+  if (duplicate) {
+    return res.status(409).json({
+      success: false,
+      message: "Automation already exists",
+    });
+  }
+
+  // Update
+automation.deviceId = deviceId;
+automation.deviceName = deviceName;
+automation.time = time;
+automation.turnOn = turnOn;
+automation.repeatDays = repeatDays;
+automation.durationMinutes = durationMinutes || null;
+
+  res.json({
+    success: true,
+    message: "Automation updated successfully",
+    automation,
+  });
+}
+
+// ===============================
+// Delete Automation
+// ===============================
+
+function deleteAutomation(req, res) {
+  const { id } = req.params;
+
+  const index = storage.automations.findIndex(
+    (automation) => automation.id === id
+  );
+
+  if (index === -1) {
+    return res.status(404).json({
+      success: false,
+      message: "Automation not found",
+    });
+  }
+
+  storage.automations.splice(index, 1);
+
+  res.json({
+    success: true,
+    message: "Automation deleted successfully",
+  });
+}
+
+// ===============================
+// Toggle Automation
+// ===============================
+
+function toggleAutomation(req, res) {
+  const { id } = req.params;
+
+  const automation = storage.automations.find(
+    (item) => item.id === id
+  );
+
+  if (!automation) {
+    return res.status(404).json({
+      success: false,
+      message: "Automation not found",
+    });
+  }
+
+  automation.enabled = !automation.enabled;
+
+  res.json({
+    success: true,
+    message: "Automation toggled successfully",
+    automation,
+  });
+}
+
+// ===============================
+// Exports
+// ===============================
+
+module.exports = {
+  createAutomation,
+  getAutomations,
+  updateAutomation,
+  deleteAutomation,
+  toggleAutomation,
+};
+
+
+=== FILE: F:\finalyearproject\backend\controllers\deviceController.js ===
+const Device = require("../models/Device");
+const SmartHome = require("../models/SmartHome");
+const Member = require("../models/Member");
+const mongoose = require("mongoose");
+
+const {
+    createDeviceNotification,
+    createPumpNotification,
+} = require("./notificationController");
+
+
+// =====================================================
+// RELAY CONFIGURATION
+// =====================================================
+
+// R1-R6 = Normal user devices
+const NORMAL_RELAYS = [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "R6",
+];
+
+// R7 = Door Alarm
+const ALARM_RELAY = "R7";
+
+// R8 = Water Pump
+const PUMP_RELAY = "R8";
+
+// Maximum devices:
+// R1-R6 = 6 normal devices
+// R7    = 1 alarm
+//
+// Total = 7
+const MAX_NORMAL_DEVICES = 7;
+
+
+// =====================================================
+// DEFAULT RELAY STATES
+// =====================================================
+
+function defaultRelayStates() {
+
+    return {
+
+        R1: "OFF",
+        R2: "OFF",
+        R3: "OFF",
+        R4: "OFF",
+        R5: "OFF",
+        R6: "OFF",
+        R7: "OFF",
+        R8: "OFF",
+
+    };
+}
+
+
+// =====================================================
+// FIND OWNER SMART HOME
+// =====================================================
+
+async function findOwnerHome(userId) {
+
+    return SmartHome.findOne({
+
+        owner: userId,
+
+    }).sort({
+
+        updatedAt: -1,
+        createdAt: -1,
+
+    });
+}
+
+
+// =====================================================
+// FIND ACCEPTED MEMBER
+// =====================================================
+
+async function findAcceptedMembership(userId) {
+
+    return Member.findOne({
+
+        user: userId,
+        status: "accepted",
+
+    }).populate("smartHome");
+}
+
+
+// =====================================================
+// FIND USER SMART HOME ACCESS
+// =====================================================
+
+async function findUserSmartHome(userId) {
+
+    // -------------------------------------------------
+    // FIRST: CHECK ACCEPTED MEMBERSHIP
+    // -------------------------------------------------
+
+    const membership =
+        await findAcceptedMembership(
+            userId
+        );
+
+    if (
+        membership &&
+        membership.smartHome
+    ) {
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "USER SMART HOME ACCESS"
+        );
+
+        console.log(
+            "Selected accepted member Smart Home"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Smart Home:",
+            membership.smartHome.name
+        );
+
+        console.log(
+            "Smart Home ID:",
+            membership.smartHome._id.toString()
+        );
+
+        console.log(
+            "ESP32:",
+            membership.smartHome.esp32Id ||
+                "NOT PAIRED"
+        );
+
+        console.log(
+            "Status:",
+            membership.smartHome.status
+        );
+
+        console.log(
+            "Is Owner: false"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return {
+
+            smartHome:
+                membership.smartHome,
+
+            isOwner:
+                false,
+
+            membership:
+                membership,
+
+        };
+    }
+
+
+    // -------------------------------------------------
+    // SECOND: CHECK OWNER
+    // -------------------------------------------------
+
+    const ownedHome =
+        await findOwnerHome(
+            userId
+        );
+
+    if (ownedHome) {
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "USER SMART HOME ACCESS"
+        );
+
+        console.log(
+            "Selected owned Smart Home"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Smart Home:",
+            ownedHome.name
+        );
+
+        console.log(
+            "Smart Home ID:",
+            ownedHome._id.toString()
+        );
+
+        console.log(
+            "ESP32:",
+            ownedHome.esp32Id ||
+                "NOT PAIRED"
+        );
+
+        console.log(
+            "Status:",
+            ownedHome.status
+        );
+
+        console.log(
+            "Is Owner: true"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return {
+
+            smartHome:
+                ownedHome,
+
+            isOwner:
+                true,
+
+            membership:
+                null,
+
+        };
+    }
+
+    return null;
+}
+
+
+// =====================================================
+// CHECK DEVICE CONTROL PERMISSION
+// =====================================================
+
+async function canControlDevices(
+    userId,
+    smartHome
+) {
+
+    if (
+        smartHome.owner.toString() ===
+        userId.toString()
+    ) {
+
+        return true;
+    }
+
+    const membership =
+        await Member.findOne({
+
+            smartHome:
+                smartHome._id,
+
+            user:
+                userId,
+
+            status:
+                "accepted",
+
+        });
+
+    return (
+        membership?.canControlDevices === true
+    );
+}
+
+
+// =====================================================
+// CHECK PUMP CONTROL PERMISSION
+// =====================================================
+
+async function canControlPump(
+    userId,
+    smartHome
+) {
+
+    if (
+        smartHome.owner.toString() ===
+        userId.toString()
+    ) {
+
+        return true;
+    }
+
+    const membership =
+        await Member.findOne({
+
+            smartHome:
+                smartHome._id,
+
+            user:
+                userId,
+
+            status:
+                "accepted",
+
+        });
+
+    return (
+        membership?.canControlPump === true
+    );
+}
+
+
+// =====================================================
+// CHECK DEVICE MANAGEMENT PERMISSION
+// =====================================================
+
+async function canManageDevices(
+    userId,
+    smartHome
+) {
+
+    if (
+        smartHome.owner.toString() ===
+        userId.toString()
+    ) {
+
+        return true;
+    }
+
+    const membership =
+        await Member.findOne({
+
+            smartHome:
+                smartHome._id,
+
+            user:
+                userId,
+
+            status:
+                "accepted",
+
+        });
+
+    return (
+        membership?.canManageDevices === true
+    );
+}
+
+
+// =====================================================
+// FIND DEVICE FOR HOME
+// =====================================================
+
+async function findDeviceForHome(
+    deviceId,
+    homeId
+) {
+
+    let device = null;
+
+
+    // -------------------------------------------------
+    // FIND BY MONGODB _id
+    // -------------------------------------------------
+
+    if (
+        mongoose.Types.ObjectId.isValid(
+            deviceId
+        )
+    ) {
+
+        device =
+            await Device.findOne({
+
+                _id:
+                    deviceId,
+
+                home:
+                    homeId,
+
+            });
+    }
+
+
+    // -------------------------------------------------
+    // FIND BY CUSTOM DEVICE ID
+    // -------------------------------------------------
+
+    if (!device) {
+
+        device =
+            await Device.findOne({
+
+                deviceId:
+                    deviceId,
+
+                home:
+                    homeId,
+
+            });
+    }
+
+    return device;
+}
+
+
+// =====================================================
+// ERROR HANDLER
+// =====================================================
+
+function handleDeviceError(
+    res,
+    error,
+    label
+) {
+
+    console.error(
+        `${label}:`,
+        error
+    );
+
+
+    // -------------------------------------------------
+    // DUPLICATE KEY
+    // -------------------------------------------------
+
+    if (
+        error &&
+        error.code === 11000
+    ) {
+
+        return res.status(409).json({
+
+            success: false,
+
+            message:
+                "This relay or device ID is already assigned",
+
+        });
+    }
+
+
+    // -------------------------------------------------
+    // MONGOOSE VALIDATION ERROR
+    // -------------------------------------------------
+
+    if (
+        error &&
+        error.name ===
+            "ValidationError"
+    ) {
+
+        return res.status(400).json({
+
+            success: false,
+
+            message:
+                error.message,
+
+        });
+    }
+
+
+    // -------------------------------------------------
+    // INVALID OBJECT ID
+    // -------------------------------------------------
+
+    if (
+        error &&
+        error.name ===
+            "CastError"
+    ) {
+
+        return res.status(400).json({
+
+            success: false,
+
+            message:
+                "Invalid ID",
+
+        });
+    }
+
+
+    // -------------------------------------------------
+    // SERVER ERROR
+    // -------------------------------------------------
+
+    return res.status(500).json({
+
+        success: false,
+
+        message:
+            "Server error",
+
+    });
+}
+
+
+// =====================================================
+// GET RELAY STATES
+//
+// ESP32 ONLY
+//
+// R1-R6 = Device collection
+// R7    = SmartHome.alarmIsOn
+// R8    = SmartHome.pumpIsOn
+// =====================================================
+
+async function getDevices(
+    req,
+    res
+) {
+
+    try {
+
+        console.log();
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "ESP32 RELAY STATE REQUEST"
+        );
+
+        console.log(
+            "================================="
+        );
+
+
+        const esp32Id =
+            req.query.esp32Id;
+
+
+        console.log(
+            "Requested ESP32 ID:",
+            esp32Id ||
+                "Not provided"
+        );
+
+
+        const relayStates =
+            defaultRelayStates();
+
+
+        let smartHome = null;
+
+
+        // -------------------------------------------------
+        // FIND SMART HOME BY ESP32 ID
+        // -------------------------------------------------
+
+        if (esp32Id) {
+
+            smartHome =
+                await SmartHome.findOne({
+
+                    esp32Id:
+                        String(
+                            esp32Id
+                        ).trim(),
+
+                });
+
+        } else {
+
+            console.log(
+                "WARNING: ESP32 ID was not provided."
+            );
+
+            smartHome =
+                await SmartHome.findOne({
+
+                    esp32Id: {
+
+                        $exists:
+                            true,
+
+                        $nin: [
+                            null,
+                            "",
+                        ],
+
+                    },
+
+                });
+        }
+
+
+        // -------------------------------------------------
+        // SMART HOME NOT FOUND
+        // -------------------------------------------------
+
+        if (!smartHome) {
+
+            console.log(
+                "SMART HOME NOT FOUND"
+            );
+
+            console.log(
+                "Returning all relay states as OFF."
+            );
+
+            console.log(
+                "================================="
+            );
+
+            return res.json(
+                relayStates
+            );
+        }
+
+
+        console.log(
+            "SmartHome MongoDB ID:",
+            smartHome._id.toString()
+        );
+
+        console.log(
+            "SmartHome Name:",
+            smartHome.name
+        );
+
+        console.log(
+            "SmartHome ESP32 ID:",
+            smartHome.esp32Id
+        );
+
+        console.log(
+            "SmartHome Owner:",
+            smartHome.owner?.toString()
+        );
+
+        console.log(
+            "SmartHome pumpIsOn:",
+            smartHome.pumpIsOn
+        );
+
+        console.log(
+            "SmartHome alarmIsOn:",
+            smartHome.alarmIsOn
+        );
+
+        console.log(
+            "SmartHome alarmEnabled:",
+            smartHome.alarmEnabled
+        );
+
+        console.log(
+            "SmartHome alarmSilenced:",
+            smartHome.alarmSilenced
+        );
+
+
+        // -------------------------------------------------
+        // GET ALL DEVICES
+        // -------------------------------------------------
+
+        const devices =
+            await Device.find({
+
+                home:
+                    smartHome._id,
+
+            });
+
+
+        console.log(
+            "Number of devices:",
+            devices.length
+        );
+
+        console.log(
+            "---------------------------------"
+        );
+
+
+        // -------------------------------------------------
+        // R1-R6 = NORMAL DEVICES
+        // -------------------------------------------------
+
+        devices.forEach(
+            (device) => {
+
+                console.log(
+                    "DATABASE DEVICE:",
+                    device.name,
+                    "| Relay:",
+                    device.relay,
+                    "| isOn:",
+                    device.isOn,
+                    "| Type:",
+                    device.type
+                );
+
+
+                if (
+                    NORMAL_RELAYS.includes(
+                        device.relay
+                    )
+                ) {
+
+                    relayStates[
+                        device.relay
+                    ] =
+                        device.isOn === true
+                            ? "ON"
+                            : "OFF";
+                }
+            }
+        );
+
+
+        // -------------------------------------------------
+        // R7 = DOOR ALARM SIREN
+        // -------------------------------------------------
+
+        relayStates[
+            ALARM_RELAY
+        ] =
+            smartHome.alarmIsOn === true
+                ? "ON"
+                : "OFF";
+
+
+        console.log(
+            "R7 ALARM:",
+            "Enabled =",
+            smartHome.alarmEnabled,
+            "| Silenced =",
+            smartHome.alarmSilenced,
+            "| Siren =",
+            smartHome.alarmIsOn,
+            "| Relay =",
+            relayStates[
+                ALARM_RELAY
+            ]
+        );
+
+
+        // -------------------------------------------------
+        // R8 = WATER PUMP
+        // -------------------------------------------------
+
+        relayStates[
+            PUMP_RELAY
+        ] =
+            smartHome.pumpIsOn === true
+                ? "ON"
+                : "OFF";
+
+
+        // -------------------------------------------------
+        // FINAL STATES
+        // -------------------------------------------------
+
+        console.log(
+            "---------------------------------"
+        );
+
+        console.log(
+            "FINAL RELAY STATES SENT TO ESP32:"
+        );
+
+
+        Object.keys(
+            relayStates
+        ).forEach(
+            (relay) => {
+
+                console.log(
+                    `${relay} ->`,
+                    relayStates[relay]
+                );
+            }
+        );
+
+
+        console.log(
+            "================================="
+        );
+
+
+        return res.json(
+            relayStates
+        );
+
+    } catch (error) {
+
+        console.error(
+            "GET RELAY STATES ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// GET USER DEVICES
+//
+// OWNER + ACCEPTED MEMBER
+// =====================================================
+
+async function getUserDevices(
+    req,
+    res
+) {
+
+    try {
+
+        const userId =
+            req.user.userId;
+
+
+        const access =
+            await findUserSmartHome(
+                userId
+            );
+
+
+        if (!access) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        const {
+            smartHome,
+            isOwner,
+            membership,
+        } = access;
+
+
+        // -------------------------------------------------
+        // GET DEVICES
+        // -------------------------------------------------
+
+        const devices =
+            await Device.find({
+
+                home:
+                    smartHome._id,
+
+            }).sort({
+
+                createdAt:
+                    1,
+
+            });
+
+
+        // -------------------------------------------------
+        // PERMISSIONS
+        // -------------------------------------------------
+
+        const permissions =
+            isOwner
+
+                ? {
+
+                    canControlDevices:
+                        true,
+
+                    canControlPump:
+                        true,
+
+                    canManageDevices:
+                        true,
+
+                }
+
+                : {
+
+                    canControlDevices:
+                        membership
+                            ?.canControlDevices === true,
+
+                    canControlPump:
+                        membership
+                            ?.canControlPump === true,
+
+                    canManageDevices:
+                        membership
+                            ?.canManageDevices === true,
+
+                };
+
+
+        // -------------------------------------------------
+        // LOG
+        // -------------------------------------------------
+
+        console.log();
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "USER DEVICES REQUEST"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Is Owner:",
+            isOwner
+        );
+
+        console.log(
+            "SmartHome:",
+            smartHome._id.toString()
+        );
+
+        console.log(
+            "SmartHome Name:",
+            smartHome.name
+        );
+
+        console.log(
+            "ESP32 ID:",
+            smartHome.esp32Id ||
+                "NOT PAIRED"
+        );
+
+        console.log(
+            "ESP32 Status:",
+            smartHome.status
+        );
+
+        console.log(
+            "Number of devices:",
+            devices.length
+        );
+
+        console.log(
+            "Pump R8:",
+            smartHome.pumpIsOn === true
+        );
+
+        console.log(
+            "Alarm Enabled:",
+            smartHome.alarmEnabled === true
+        );
+
+        console.log(
+            "Alarm Silenced:",
+            smartHome.alarmSilenced === true
+        );
+
+        console.log(
+            "Alarm Siren:",
+            smartHome.alarmIsOn === true
+        );
+
+        console.log(
+            "Permissions:",
+            permissions
+        );
+
+
+        devices.forEach(
+            (device) => {
+
+                console.log(
+                    `FLUTTER DEVICE STATE: ` +
+                    `${device.name} | ` +
+                    `Type: ${device.type} | ` +
+                    `Relay: ${device.relay} | ` +
+                    `isOn: ${device.isOn}`
+                );
+            }
+        );
+
+
+        console.log(
+            "================================="
+        );
+
+
+        return res.json({
+
+            success: true,
+
+
+            // -------------------------------------------------
+            // DEVICES
+            // -------------------------------------------------
+
+            devices,
+
+            deviceCount:
+                devices.length,
+
+            maxDevices:
+                MAX_NORMAL_DEVICES,
+
+            canAddDevice:
+                permissions.canManageDevices &&
+                devices.length <
+                    MAX_NORMAL_DEVICES,
+
+
+            // -------------------------------------------------
+            // ALARM
+            // -------------------------------------------------
+
+            alarm:
+                devices.find(
+                    (device) =>
+                        device.relay ===
+                        ALARM_RELAY
+                ) || null,
+
+
+            // -------------------------------------------------
+            // PUMP
+            // -------------------------------------------------
+
+            pump: {
+
+                name:
+                    "Water Pump",
+
+                relay:
+                    PUMP_RELAY,
+
+                isOn:
+                    smartHome.pumpIsOn === true,
+
+            },
+
+
+            // -------------------------------------------------
+            // SMART HOME
+            // -------------------------------------------------
+
+            smartHome: {
+
+                id:
+                    smartHome._id,
+
+                name:
+                    smartHome.name,
+
+                esp32Id:
+                    smartHome.esp32Id ||
+                    null,
+
+                status:
+                    smartHome.status,
+
+                lastSeen:
+                    smartHome.lastSeen ||
+                    null,
+
+                temperature:
+                    smartHome.temperature ??
+                    null,
+
+                humidity:
+                    smartHome.humidity ??
+                    null,
+
+                doorStatus:
+                    smartHome.doorStatus ??
+                    null,
+
+                sensorLastUpdated:
+                    smartHome.sensorLastUpdated ??
+                    null,
+
+                alarmEnabled:
+                    smartHome.alarmEnabled === true,
+
+                alarmIsOn:
+                    smartHome.alarmIsOn === true,
+
+                // NEW
+                alarmSilenced:
+                    smartHome.alarmSilenced === true,
+
+            },
+
+
+            // -------------------------------------------------
+            // ACCESS
+            // -------------------------------------------------
+
+            isOwner,
+
+            permissions,
+
+        });
+
+    } catch (error) {
+
+        handleDeviceError(
+            res,
+            error,
+            "Get User Devices Error"
+        );
+    }
+}
+
+
+// =====================================================
+// ADD DEVICE
+//
+// R1-R7
+//
+// R1-R6 = NORMAL
+// R7    = ALARM
+// R8    = PUMP
+// =====================================================
+
+async function addDevice(
+    req,
+    res
+) {
+
+    try {
+
+        const {
+            name,
+            deviceId,
+            type,
+            relay,
+        } = req.body;
+
+
+        // -------------------------------------------------
+        // VALIDATE
+        // -------------------------------------------------
+
+        if (
+            !name ||
+            !deviceId ||
+            !type ||
+            !relay
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Name, deviceId, type and relay are required",
+
+            });
+        }
+
+
+        const cleanType =
+            String(type)
+                .trim()
+                .toLowerCase();
+
+
+        const cleanRelay =
+            String(relay)
+                .trim()
+                .toUpperCase();
+
+
+        // -------------------------------------------------
+        // R8 RESERVED
+        // -------------------------------------------------
+
+        if (
+            cleanRelay ===
+            PUMP_RELAY
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "R8 is permanently reserved for the water pump",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // VALID RELAYS
+        // -------------------------------------------------
+
+        const validRelays = [
+
+            ...NORMAL_RELAYS,
+
+            ALARM_RELAY,
+
+        ];
+
+
+        if (
+            !validRelays.includes(
+                cleanRelay
+            )
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Relay must be one of R1 to R7",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // R7 MUST BE ALARM
+        // -------------------------------------------------
+
+        if (
+            cleanRelay ===
+            ALARM_RELAY &&
+            cleanType !==
+                "alarm"
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "R7 is reserved for the door alarm. Device type must be alarm.",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // ALARM MUST USE R7
+        // -------------------------------------------------
+
+        if (
+            cleanType ===
+            "alarm" &&
+            cleanRelay !==
+                ALARM_RELAY
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Alarm device must use relay R7.",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // FIND USER HOME
+        // -------------------------------------------------
+
+        const access =
+            await findUserSmartHome(
+                req.user.userId
+            );
+
+
+        if (!access) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        const {
+            smartHome,
+        } = access;
+
+
+        // -------------------------------------------------
+        // MANAGEMENT PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await canManageDevices(
+                req.user.userId,
+                smartHome
+            );
+
+
+        if (!allowed) {
+
+            return res.status(403).json({
+
+                success: false,
+
+                message:
+                    "You do not have permission to manage devices",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // MAXIMUM 7 DEVICES
+        // -------------------------------------------------
+
+        const deviceCount =
+            await Device.countDocuments({
+
+                home:
+                    smartHome._id,
+
+            });
+
+
+        if (
+            deviceCount >=
+            MAX_NORMAL_DEVICES
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "You can add a maximum of 7 devices including the door alarm",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // CHECK RELAY
+        // -------------------------------------------------
+
+        const existingRelay =
+            await Device.findOne({
+
+                home:
+                    smartHome._id,
+
+                relay:
+                    cleanRelay,
+
+            });
+
+
+        if (existingRelay) {
+
+            return res.status(409).json({
+
+                success: false,
+
+                message:
+                    `${cleanRelay} is already assigned to another device`,
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // CHECK DEVICE ID
+        // -------------------------------------------------
+
+        const cleanDeviceId =
+            String(deviceId).trim();
+
+
+        const existingDevice =
+            await Device.findOne({
+
+                home:
+                    smartHome._id,
+
+                deviceId:
+                    cleanDeviceId,
+
+            });
+
+
+        if (existingDevice) {
+
+            return res.status(409).json({
+
+                success: false,
+
+                message:
+                    "This device ID is already in use",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // CREATE DEVICE
+        // -------------------------------------------------
+
+        const device =
+            await Device.create({
+
+                name:
+                    String(name).trim(),
+
+                deviceId:
+                    cleanDeviceId,
+
+                type:
+                    cleanType,
+
+                relay:
+                    cleanRelay,
+
+                isOn:
+                    false,
+
+                home:
+                    smartHome._id,
+
+            });
+
+
+        // -------------------------------------------------
+        // IF ALARM DEVICE IS CREATED
+        // MAKE SURE SMART HOME ALARM STATE IS CLEAN
+        // -------------------------------------------------
+
+        if (
+            cleanRelay ===
+            ALARM_RELAY
+        ) {
+
+            smartHome.alarmEnabled =
+                false;
+
+            smartHome.alarmIsOn =
+                false;
+
+            smartHome.alarmSilenced =
+                false;
+
+            await smartHome.save();
+        }
+
+
+        console.log(
+            `DEVICE CREATED: ` +
+            `${device.name} | ` +
+            `Type: ${device.type} | ` +
+            `Relay: ${device.relay} | ` +
+            `Home: ${smartHome._id}`
+        );
+
+
+        return res.status(201).json({
+
+            success: true,
+
+            message:
+                "Device added successfully",
+
+            device,
+
+        });
+
+    } catch (error) {
+
+        handleDeviceError(
+            res,
+            error,
+            "Add Device Error"
+        );
+    }
+}
+
+
+// =====================================================
+// CONTROL DEVICE
+//
+// R1-R6 = NORMAL DEVICE
+// R7    = ALARM
+// R8    = PUMP - NOT ALLOWED HERE
+// =====================================================
+
+async function controlDevice(
+    req,
+    res
+) {
+
+    try {
+
+        const {
+            deviceId,
+        } = req.params;
+
+
+        const {
+            state,
+        } = req.body;
+
+
+        console.log();
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "CONTROL DEVICE REQUEST"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "User:",
+            req.user.userId
+        );
+
+        console.log(
+            "Device ID:",
+            deviceId
+        );
+
+        console.log(
+            "Requested state:",
+            state
+        );
+
+
+        // -------------------------------------------------
+        // VALIDATE STATE
+        // -------------------------------------------------
+
+        if (
+            !["ON", "OFF"].includes(
+                state
+            )
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "State must be ON or OFF",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // FIND HOME
+        // -------------------------------------------------
+
+        const access =
+            await findUserSmartHome(
+                req.user.userId
+            );
+
+
+        if (!access) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        const {
+            smartHome,
+        } = access;
+
+
+        // -------------------------------------------------
+        // PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await canControlDevices(
+                req.user.userId,
+                smartHome
+            );
+
+
+        if (!allowed) {
+
+            return res.status(403).json({
+
+                success: false,
+
+                message:
+                    "You do not have permission to control devices",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // FIND DEVICE
+        // -------------------------------------------------
+
+        const device =
+            await findDeviceForHome(
+                deviceId,
+                smartHome._id
+            );
+
+
+        if (!device) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Device not found",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // R8 PROTECTION
+        // -------------------------------------------------
+
+        if (
+            device.relay ===
+            PUMP_RELAY
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "R8 is reserved for the water pump",
+
+            });
+        }
+
+
+        // =================================================
+        // R7 = DOOR ALARM
+        // =================================================
+
+        if (
+            device.relay ===
+            ALARM_RELAY
+        ) {
+
+            if (
+                device.type !==
+                "alarm"
+            ) {
+
+                return res.status(400).json({
+
+                    success: false,
+
+                    message:
+                        "R7 can only be used by the alarm device",
+
+                });
+            }
+
+
+            const previousAlarmState =
+                device.isOn === true;
+
+
+            const newAlarmState =
+                state === "ON";
+
+
+            // -------------------------------------------------
+            // UPDATE ALARM ARM/DISARM STATE
+            // -------------------------------------------------
+
+            device.isOn =
+                newAlarmState;
+
+            smartHome.alarmEnabled =
+                newAlarmState;
+
+
+            // -------------------------------------------------
+            // IMPORTANT:
+            // WHEN USER DISARMS THE ALARM,
+            // RESET SILENCED STATE TOO.
+            // -------------------------------------------------
+
+            if (
+                state === "OFF"
+            ) {
+
+                smartHome.alarmIsOn =
+                    false;
+
+                smartHome.alarmSilenced =
+                    false;
+            }
+
+
+            // -------------------------------------------------
+            // WHEN USER ARMS THE ALARM,
+            // START WITH A FRESH ALARM STATE.
+            // -------------------------------------------------
+
+            else {
+
+                smartHome.alarmSilenced =
+                    false;
+            }
+
+
+            await device.save();
+
+            await smartHome.save();
+
+
+            console.log(
+                `ALARM STATE CHANGED: ` +
+                `R7 | ` +
+                `Previous Armed: ${
+                    previousAlarmState
+                        ? "ON"
+                        : "OFF"
+                } | ` +
+                `New Armed: ${
+                    newAlarmState
+                        ? "ON"
+                        : "OFF"
+                } | ` +
+                `Silenced: ${
+                    smartHome.alarmSilenced
+                        ? "YES"
+                        : "NO"
+                } | ` +
+                `Siren: ${
+                    smartHome.alarmIsOn
+                        ? "ON"
+                        : "OFF"
+                }`
+            );
+
+
+            return res.json({
+
+                success: true,
+
+                message:
+                    `Door alarm ${
+                        state === "ON"
+                            ? "armed"
+                            : "disarmed"
+                    }`,
+
+                device,
+
+                alarm: {
+
+                    name:
+                        device.name,
+
+                    relay:
+                        ALARM_RELAY,
+
+                    enabled:
+                        device.isOn === true,
+
+                    isOn:
+                        smartHome.alarmIsOn === true,
+
+                    silenced:
+                        smartHome.alarmSilenced === true,
+
+                },
+
+            });
+        }
+
+
+        // =================================================
+        // R1-R6 = NORMAL DEVICES
+        // =================================================
+
+        if (
+            !NORMAL_RELAYS.includes(
+                device.relay
+            )
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Invalid device relay",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // REMEMBER PREVIOUS STATE
+        // -------------------------------------------------
+
+        const previousDeviceState =
+            device.isOn === true;
+
+
+        const newDeviceState =
+            state === "ON";
+
+
+        console.log(
+            `BEFORE UPDATE: ` +
+            `${device.name} | ` +
+            `Relay: ${device.relay} | ` +
+            `isOn: ${device.isOn}`
+        );
+
+
+        // -------------------------------------------------
+        // UPDATE DEVICE
+        // -------------------------------------------------
+
+        device.isOn =
+            newDeviceState;
+
+
+        await device.save();
+
+
+        // =================================================
+        // CREATE DEVICE NOTIFICATION
+        //
+        // ONLY when the state actually changes.
+        // =================================================
+
+        if (
+            previousDeviceState !==
+            newDeviceState
+        ) {
+
+            await createDeviceNotification({
+
+                userId:
+                    req.user.userId,
+
+                smartHome:
+                    smartHome,
+
+                device:
+                    device,
+
+                state:
+                    state,
+
+            });
+
+            console.log(
+                "DEVICE NOTIFICATION CREATED"
+            );
+        }
+
+
+        console.log(
+            `DEVICE STATE CHANGED: ` +
+            `${device.name} | ` +
+            `Relay: ${device.relay} | ` +
+            `Previous: ${
+                previousDeviceState
+                    ? "ON"
+                    : "OFF"
+            } | ` +
+            `New: ${
+                newDeviceState
+                    ? "ON"
+                    : "OFF"
+            }`
+        );
+
+
+        console.log(
+            "MongoDB document saved successfully."
+        );
+
+        console.log(
+            "================================="
+        );
+
+
+        return res.json({
+
+            success: true,
+
+            message:
+                `${device.name} turned ${state}`,
+
+            device,
+
+        });
+
+    } catch (error) {
+
+        handleDeviceError(
+            res,
+            error,
+            "Control Device Error"
+        );
+    }
+}
+
+
+// =====================================================
+// DELETE DEVICE
+//
+// R1-R7 CAN BE DELETED
+// R8 CANNOT BE DELETED
+// =====================================================
+
+async function deleteDevice(
+    req,
+    res
+) {
+
+    try {
+
+        const {
+            deviceId,
+        } = req.params;
+
+
+        // -------------------------------------------------
+        // FIND HOME
+        // -------------------------------------------------
+
+        const access =
+            await findUserSmartHome(
+                req.user.userId
+            );
+
+
+        if (!access) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        const {
+            smartHome,
+        } = access;
+
+
+        // -------------------------------------------------
+        // PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await canManageDevices(
+                req.user.userId,
+                smartHome
+            );
+
+
+        if (!allowed) {
+
+            return res.status(403).json({
+
+                success: false,
+
+                message:
+                    "You do not have permission to manage devices",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // FIND DEVICE
+        // -------------------------------------------------
+
+        const device =
+            await findDeviceForHome(
+                deviceId,
+                smartHome._id
+            );
+
+
+        if (!device) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Device not found",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // R8 PROTECTION
+        // -------------------------------------------------
+
+        if (
+            device.relay ===
+            PUMP_RELAY
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Water pump relay R8 cannot be deleted",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // IF ALARM IS DELETED
+        // RESET ALL ALARM STATES
+        // -------------------------------------------------
+
+        if (
+            device.relay ===
+            ALARM_RELAY
+        ) {
+
+            smartHome.alarmEnabled =
+                false;
+
+            smartHome.alarmIsOn =
+                false;
+
+            smartHome.alarmSilenced =
+                false;
+
+            await smartHome.save();
+        }
+
+
+        // -------------------------------------------------
+        // DELETE DEVICE
+        // -------------------------------------------------
+
+        await device.deleteOne();
+
+
+        console.log(
+            `DEVICE DELETED: ` +
+            `${device.name} | ` +
+            `Type: ${device.type} | ` +
+            `Relay: ${device.relay}`
+        );
+
+
+        return res.json({
+
+            success: true,
+
+            message:
+                "Device deleted successfully",
+
+            freedRelay:
+                device.relay,
+
+        });
+
+    } catch (error) {
+
+        handleDeviceError(
+            res,
+            error,
+            "Delete Device Error"
+        );
+    }
+}
+
+
+// =====================================================
+// CONTROL WATER PUMP R8
+// =====================================================
+
+async function controlPump(
+    req,
+    res
+) {
+
+    try {
+
+        const {
+            state,
+        } = req.body;
+
+
+        console.log();
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "CONTROL WATER PUMP"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "User:",
+            req.user.userId
+        );
+
+        console.log(
+            "Requested state:",
+            state
+        );
+
+
+        // -------------------------------------------------
+        // VALIDATE STATE
+        // -------------------------------------------------
+
+        if (
+            !["ON", "OFF"].includes(
+                state
+            )
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "State must be ON or OFF",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // FIND HOME
+        // -------------------------------------------------
+
+        const access =
+            await findUserSmartHome(
+                req.user.userId
+            );
+
+
+        if (!access) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        const {
+            smartHome,
+        } = access;
+
+
+        // -------------------------------------------------
+        // PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await canControlPump(
+                req.user.userId,
+                smartHome
+            );
+
+
+        if (!allowed) {
+
+            return res.status(403).json({
+
+                success: false,
+
+                message:
+                    "You do not have permission to control the water pump",
+
+            });
+        }
+
+
+        // -------------------------------------------------
+        // REMEMBER PREVIOUS STATE
+        // -------------------------------------------------
+
+        const previousPumpState =
+            smartHome.pumpIsOn === true;
+
+
+        const newPumpState =
+            state === "ON";
+
+
+        console.log(
+            `PUMP BEFORE UPDATE: ` +
+            `R8 | ` +
+            `pumpIsOn: ${
+                previousPumpState
+                    ? "ON"
+                    : "OFF"
+            }`
+        );
+
+
+        // -------------------------------------------------
+        // UPDATE PUMP STATE
+        // -------------------------------------------------
+
+        smartHome.pumpIsOn =
+            newPumpState;
+
+        smartHome.pumpRelay =
+            PUMP_RELAY;
+
+
+        await smartHome.save();
+
+
+        console.log(
+            `PUMP STATE CHANGED: ` +
+            `R8 | ` +
+            `Previous: ${
+                previousPumpState
+                    ? "ON"
+                    : "OFF"
+            } | ` +
+            `New: ${
+                newPumpState
+                    ? "ON"
+                    : "OFF"
+            }`
+        );
+
+
+        // =================================================
+        // CREATE PUMP NOTIFICATION
+        //
+        // ONLY when state actually changes.
+        // =================================================
+
+        if (
+            previousPumpState !==
+            newPumpState
+        ) {
+
+            await createPumpNotification({
+
+                smartHome:
+                    smartHome,
+
+                state:
+                    state,
+
+            });
+
+
+            console.log(
+                "PUMP NOTIFICATION CREATED"
+            );
+        }
+
+
+        console.log(
+            "Pump MongoDB document saved successfully."
+        );
+
+        console.log(
+            "================================="
+        );
+
+
+        return res.json({
+
+            success: true,
+
+            message:
+                `Water pump turned ${state}`,
+
+            pump: {
+
+                name:
+                    "Water Pump",
+
+                relay:
+                    PUMP_RELAY,
+
+                isOn:
+                    smartHome.pumpIsOn === true,
+
+            },
+
+        });
+
+    } catch (error) {
+
+        handleDeviceError(
+            res,
+            error,
+            "Control Pump Error"
+        );
+    }
+}
+
+
+// =====================================================
+// CONTROL ALARM R7
+//
+// ON  = Arm alarm
+// OFF = Disarm alarm
+//
+// Actual siren is triggered by sensorController.
+// =====================================================
+
+async function controlAlarm(
+    req,
+    res
+) {
+    try {
+        const {
+            state,
+        } = req.body;
+
+        console.log();
+        console.log("=================================");
+        console.log("CONTROL DOOR ALARM");
+        console.log("=================================");
+        console.log("User:", req.user.userId);
+        console.log("Requested state:", state);
+
+        // -------------------------------------------------
+        // VALIDATE
+        // -------------------------------------------------
+        if (!["ON", "OFF"].includes(state)) {
+            return res.status(400).json({
+                success: false,
+                message: "State must be ON or OFF",
+            });
+        }
+
+        // -------------------------------------------------
+        // FIND HOME
+        // -------------------------------------------------
+        const access = await findUserSmartHome(
+            req.user.userId
+        );
+
+        if (!access) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
+
+        const {
+            smartHome,
+        } = access;
+
+        // -------------------------------------------------
+        // PERMISSION
+        // -------------------------------------------------
+        const allowed = await canControlDevices(
+            req.user.userId,
+            smartHome
+        );
+
+        if (!allowed) {
+            return res.status(403).json({
+                success: false,
+                message: "You do not have permission to control the alarm",
+            });
+        }
+
+        const previousAlarmState = smartHome.alarmEnabled === true;
+        const newAlarmState = state === "ON";
+
+        // -------------------------------------------------
+        // UPDATE SMARTHOME MODEL DIRECTLY
+        // -------------------------------------------------
+        smartHome.alarmEnabled = newAlarmState;
+        smartHome.alarmSilenced = false;
+
+        // Disarming stops the siren and clears silenced status
+        if (state === "OFF") {
+            smartHome.alarmIsOn = false;
+            smartHome.alarmSilenced = false;
+        }
+
+        await smartHome.save();
+
+        // -------------------------------------------------
+        // UPDATE DEVICE (IF REGISTERED, OPTIONAL)
+        // -------------------------------------------------
+        const alarmDevice = await Device.findOne({
+            home: smartHome._id,
+            relay: ALARM_RELAY,
+        });
+
+        if (alarmDevice) {
+            alarmDevice.isOn = newAlarmState;
+            await alarmDevice.save();
+        }
+
+        console.log(
+            `ALARM STATE CHANGED: R7 | ` +
+            `Previous Armed: ${previousAlarmState ? "ON" : "OFF"} | ` +
+            `New Armed: ${newAlarmState ? "ON" : "OFF"} | ` +
+            `Silenced: ${smartHome.alarmSilenced ? "YES" : "NO"} | ` +
+            `Siren: ${smartHome.alarmIsOn ? "ON" : "OFF"}`
+        );
+        console.log("=================================");
+
+        return res.json({
+            success: true,
+            message: `Door alarm ${state === "ON" ? "armed" : "disarmed"}`,
+            alarm: {
+                name: alarmDevice ? alarmDevice.name : "Door Alarm",
+                relay: ALARM_RELAY,
+                enabled: smartHome.alarmEnabled === true,
+                isOn: smartHome.alarmIsOn === true,
+                silenced: smartHome.alarmSilenced === true,
+            },
+            smartHome: {
+                alarmEnabled: smartHome.alarmEnabled === true,
+                alarmIsOn: smartHome.alarmIsOn === true,
+                alarmSilenced: smartHome.alarmSilenced === true,
+            },
+        });
+
+    } catch (error) {
+        handleDeviceError(
+            res,
+            error,
+            "Control Alarm Error"
+        );
+    }
+}
+
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = {
+
+    getDevices,
+
+    getUserDevices,
+
+    addDevice,
+
+    controlDevice,
+
+    deleteDevice,
+
+    controlPump,
+
+    controlAlarm,
+
+};
+
+
+
+=== FILE: F:\finalyearproject\backend\controllers\memberController.js ===
+const Member = require("../models/Member");
+const User = require("../models/User");
+const SmartHome = require("../models/SmartHome");
+
+// =====================================================
+// FIND OWNER SMART HOME
+// =====================================================
+
+async function findOwnerHome(userId) {
+    return SmartHome.findOne({
+        owner: userId,
+    });
+}
+
+// =====================================================
+// FIND ACCEPTED MEMBER RECORD
+// =====================================================
+
+async function findAcceptedMembership(userId) {
+    return Member.findOne({
+        user: userId,
+        status: "accepted",
+    }).populate("smartHome");
+}
+
+// =====================================================
+// FIND SMART HOME ACCESS
+// =====================================================
+
+async function findUserSmartHome(userId) {
+    // -------------------------------------------------
+    // FIRST: CHECK ACCEPTED MEMBERSHIP
+    // -------------------------------------------------
+
+    const membership =
+        await findAcceptedMembership(userId);
+
+    if (
+        membership &&
+        membership.smartHome
+    ) {
+        const smartHome =
+            membership.smartHome;
+
+        return {
+            smartHome,
+
+            isOwner:
+                smartHome.owner.toString() ===
+                userId.toString(),
+
+            membership,
+        };
+    }
+
+    // -------------------------------------------------
+    // SECOND: CHECK IF USER OWNS A SMART HOME
+    // -------------------------------------------------
+
+    const ownedHome =
+        await findOwnerHome(userId);
+
+    if (ownedHome) {
+        return {
+            smartHome: ownedHome,
+            isOwner: true,
+            membership: null,
+        };
+    }
+
+    // -------------------------------------------------
+    // NO SMART HOME FOUND
+    // -------------------------------------------------
+
+    return null;
+}
+
+// =====================================================
+// CHECK MEMBER MANAGEMENT PERMISSION
+// =====================================================
+
+async function checkMemberManagementPermission(
+    userId,
+    smartHome
+) {
+    // -------------------------------------------------
+    // OWNER ALWAYS HAS PERMISSION
+    // -------------------------------------------------
+
+    if (
+        smartHome.owner.toString() ===
+        userId.toString()
+    ) {
+        return true;
+    }
+
+    // -------------------------------------------------
+    // CHECK ACCEPTED MEMBER PERMISSION
+    // -------------------------------------------------
+
+    const membership =
+        await Member.findOne({
+            smartHome: smartHome._id,
+            user: userId,
+            status: "accepted",
+        });
+
+    return (
+        membership?.canManageMembers === true
+    );
+}
+
+// =====================================================
+// GET MEMBERS
+// =====================================================
+
+async function getMembers(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        console.log("=================================");
+        console.log("GET MEMBERS REQUEST");
+        console.log("User ID:", userId);
+        console.log("=================================");
+
+        // -------------------------------------------------
+        // FIND USER SMART HOME
+        // -------------------------------------------------
+
+        const access =
+            await findUserSmartHome(userId);
+
+        if (!access) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Smart home not found",
+            });
+        }
+
+        const {
+            smartHome,
+            isOwner,
+        } = access;
+
+        console.log(
+            "Smart Home ID:",
+            smartHome._id.toString()
+        );
+
+        console.log(
+            "Smart Home Name:",
+            smartHome.name
+        );
+
+        console.log(
+            "Is Owner:",
+            isOwner
+        );
+
+        // -------------------------------------------------
+        // CHECK MEMBER MANAGEMENT PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await checkMemberManagementPermission(
+                userId,
+                smartHome
+            );
+
+        if (!allowed) {
+            console.log(
+                "GET MEMBERS ACCESS DENIED:",
+                userId
+            );
+
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You do not have permission to manage members",
+            });
+        }
+
+        // -------------------------------------------------
+        // GET OWNER
+        // -------------------------------------------------
+
+        const owner =
+            await User.findById(
+                smartHome.owner
+            ).select(
+                "name fullName email"
+            );
+
+        // -------------------------------------------------
+        // GET ACCEPTED MEMBERS
+        // -------------------------------------------------
+
+        const members =
+            await Member.find({
+                smartHome:
+                    smartHome._id,
+
+                status:
+                    "accepted",
+            })
+                .populate(
+                    "user",
+                    "name fullName email"
+                )
+                .populate(
+                    "invitedBy",
+                    "name fullName email"
+                );
+
+        // -------------------------------------------------
+        // CURRENT USER MEMBERSHIP
+        // -------------------------------------------------
+
+        let currentMembership = null;
+
+        if (!isOwner) {
+            currentMembership =
+                await Member.findOne({
+                    smartHome:
+                        smartHome._id,
+
+                    user:
+                        userId,
+
+                    status:
+                        "accepted",
+                });
+        }
+
+        // -------------------------------------------------
+        // CURRENT USER PERMISSIONS
+        // -------------------------------------------------
+
+        const currentUserPermissions =
+            isOwner
+                ? {
+                    canControlDevices: true,
+                    canControlPump: true,
+                    canManageDevices: true,
+                    canManageMembers: true,
+                }
+                : {
+                    canControlDevices:
+                        currentMembership
+                            ?.canControlDevices === true,
+
+                    canControlPump:
+                        currentMembership
+                            ?.canControlPump === true,
+
+                    canManageDevices:
+                        currentMembership
+                            ?.canManageDevices === true,
+
+                    canManageMembers:
+                        currentMembership
+                            ?.canManageMembers === true,
+                };
+
+        // -------------------------------------------------
+        // SMART HOME RESPONSE
+        // -------------------------------------------------
+
+        const smartHomeResponse = {
+            id:
+                smartHome._id,
+
+            name:
+                smartHome.name,
+
+            esp32Id:
+                smartHome.esp32Id ||
+                null,
+
+            status:
+                smartHome.status ||
+                "disconnected",
+
+            pumpRelay:
+                smartHome.pumpRelay ||
+                "R8",
+
+            pumpIsOn:
+                smartHome.pumpIsOn === true,
+        };
+
+        // -------------------------------------------------
+        // RESPONSE
+        // -------------------------------------------------
+
+        console.log(
+            "GET MEMBERS SUCCESS"
+        );
+
+        console.log(
+            "Member count:",
+            members.length
+        );
+
+        console.log("=================================");
+
+        return res.status(200).json({
+            success: true,
+
+            smartHome:
+                smartHomeResponse,
+
+            isOwner,
+
+            owner,
+
+            currentUserPermissions,
+
+            members,
+
+            memberCount:
+                members.length,
+        });
+
+    } catch (error) {
+        console.error(
+            "================================="
+        );
+
+        console.error(
+            "GET MEMBERS ERROR"
+        );
+
+        console.error(
+            "Error name:",
+            error.name
+        );
+
+        console.error(
+            "Error message:",
+            error.message
+        );
+
+        console.error(
+            "Error stack:",
+            error.stack
+        );
+
+        console.error(
+            "================================="
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+            error:
+                process.env.NODE_ENV ===
+                "development"
+                    ? error.message
+                    : undefined,
+        });
+    }
+}
+
+// =====================================================
+// ADD / INVITE MEMBER
+// =====================================================
+
+async function addMember(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const {
+            email,
+            controlDevices = true,
+            controlPump = false,
+            manageDevices = false,
+            manageMembers = false,
+        } = req.body;
+
+        // -------------------------------------------------
+        // FIND USER SMART HOME
+        // -------------------------------------------------
+
+        const access =
+            await findUserSmartHome(
+                userId
+            );
+
+        if (!access) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Smart home not found",
+            });
+        }
+
+        const {
+            smartHome,
+        } = access;
+
+        // -------------------------------------------------
+        // CHECK MEMBER MANAGEMENT PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await checkMemberManagementPermission(
+                userId,
+                smartHome
+            );
+
+        if (!allowed) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You do not have permission to manage members",
+            });
+        }
+
+        // -------------------------------------------------
+        // VALIDATE EMAIL
+        // -------------------------------------------------
+
+        if (
+            !email ||
+            !email.trim()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Member email is required",
+            });
+        }
+
+        const memberEmail =
+            email.trim().toLowerCase();
+
+        // -------------------------------------------------
+        // FIND USER
+        // -------------------------------------------------
+
+        const memberUser =
+            await User.findOne({
+                email:
+                    memberEmail,
+            });
+
+        if (!memberUser) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "No user found with this email",
+            });
+        }
+
+        // -------------------------------------------------
+        // OWNER CANNOT INVITE HIMSELF
+        // -------------------------------------------------
+
+        if (
+            memberUser._id.toString() ===
+            smartHome.owner.toString()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Smart Home owner cannot be invited",
+            });
+        }
+
+        // -------------------------------------------------
+        // CHECK EXISTING MEMBERSHIP
+        // -------------------------------------------------
+
+        const existingMember =
+            await Member.findOne({
+                smartHome:
+                    smartHome._id,
+
+                user:
+                    memberUser._id,
+            });
+
+        if (existingMember) {
+            // -------------------------------------------------
+            // PENDING
+            // -------------------------------------------------
+
+            if (
+                existingMember.status ===
+                "pending"
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message:
+                        "This user already has a pending invitation",
+                });
+            }
+
+            // -------------------------------------------------
+            // ACCEPTED
+            // -------------------------------------------------
+
+            if (
+                existingMember.status ===
+                "accepted"
+            ) {
+                return res.status(409).json({
+                    success: false,
+                    message:
+                        "This user is already a member",
+                });
+            }
+
+            // -------------------------------------------------
+            // REJECTED
+            // -------------------------------------------------
+
+            existingMember.status =
+                "pending";
+
+            existingMember.role =
+                "member";
+
+            existingMember.canControlDevices =
+                controlDevices === true;
+
+            existingMember.canControlPump =
+                controlPump === true;
+
+            existingMember.canManageDevices =
+                manageDevices === true;
+
+            existingMember.canManageMembers =
+                manageMembers === true;
+
+            existingMember.invitedBy =
+                userId;
+
+            await existingMember.save();
+
+            return res.status(201).json({
+                success: true,
+
+                message:
+                    "Member invitation sent successfully",
+
+                member: {
+                    id:
+                        existingMember._id,
+
+                    userId:
+                        memberUser._id,
+
+                    name:
+                        memberUser.name ||
+                        memberUser.fullName,
+
+                    email:
+                        memberUser.email,
+
+                    role:
+                        existingMember.role,
+
+                    status:
+                        existingMember.status,
+
+                    canControlDevices:
+                        existingMember.canControlDevices,
+
+                    canControlPump:
+                        existingMember.canControlPump,
+
+                    canManageDevices:
+                        existingMember.canManageDevices,
+
+                    canManageMembers:
+                        existingMember.canManageMembers,
+                },
+            });
+        }
+
+        // -------------------------------------------------
+        // CREATE NEW MEMBER INVITATION
+        // -------------------------------------------------
+
+        const member =
+            await Member.create({
+                smartHome:
+                    smartHome._id,
+
+                user:
+                    memberUser._id,
+
+                role:
+                    "member",
+
+                canControlDevices:
+                    controlDevices === true,
+
+                canControlPump:
+                    controlPump === true,
+
+                canManageDevices:
+                    manageDevices === true,
+
+                canManageMembers:
+                    manageMembers === true,
+
+                status:
+                    "pending",
+
+                invitedBy:
+                    userId,
+            });
+
+        console.log("=================================");
+        console.log(
+            "SMART HOME MEMBER INVITED"
+        );
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+        console.log(
+            "Invited User:",
+            memberUser.email
+        );
+        console.log(
+            "Invited By:",
+            userId
+        );
+        console.log(
+            "Status:",
+            member.status
+        );
+        console.log("=================================");
+
+        return res.status(201).json({
+            success: true,
+
+            message:
+                "Member invitation sent successfully",
+
+            member: {
+                id:
+                    member._id,
+
+                userId:
+                    memberUser._id,
+
+                name:
+                    memberUser.name ||
+                    memberUser.fullName,
+
+                email:
+                    memberUser.email,
+
+                role:
+                    member.role,
+
+                status:
+                    member.status,
+
+                canControlDevices:
+                    member.canControlDevices,
+
+                canControlPump:
+                    member.canControlPump,
+
+                canManageDevices:
+                    member.canManageDevices,
+
+                canManageMembers:
+                    member.canManageMembers,
+            },
+        });
+
+    } catch (error) {
+        console.error(
+            "ADD MEMBER ERROR:",
+            error
+        );
+
+        if (
+            error.code === 11000
+        ) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "This user is already a member or has a pending invitation",
+            });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// GET MY INVITATIONS
+// =====================================================
+
+async function getMyInvitations(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const invitations =
+            await Member.find({
+                user:
+                    userId,
+
+                status:
+                    "pending",
+            })
+                .populate(
+                    "smartHome",
+                    "name esp32Id status pumpRelay pumpIsOn owner"
+                )
+                .populate(
+                    "invitedBy",
+                    "name fullName email"
+                );
+
+        return res.json({
+            success: true,
+
+            invitations,
+
+            invitationCount:
+                invitations.length,
+        });
+
+    } catch (error) {
+        console.error(
+            "GET MY INVITATIONS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// ACCEPT INVITATION
+// =====================================================
+
+async function acceptInvitation(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const member =
+            await Member.findOne({
+                _id:
+                    req.params.memberId,
+
+                user:
+                    userId,
+
+                status:
+                    "pending",
+            });
+
+        if (!member) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Invitation not found",
+            });
+        }
+
+        member.status =
+            "accepted";
+
+        await member.save();
+
+        const smartHome =
+            await SmartHome.findById(
+                member.smartHome
+            );
+
+        return res.json({
+            success: true,
+
+            message:
+                "Invitation accepted successfully",
+
+            member,
+
+            smartHome:
+                smartHome
+                    ? {
+                        id:
+                            smartHome._id,
+
+                        name:
+                            smartHome.name,
+
+                        esp32Id:
+                            smartHome.esp32Id,
+
+                        status:
+                            smartHome.status,
+
+                        pumpRelay:
+                            smartHome.pumpRelay ||
+                            "R8",
+
+                        pumpIsOn:
+                            smartHome.pumpIsOn ===
+                            true,
+                    }
+                    : null,
+        });
+
+    } catch (error) {
+        console.error(
+            "ACCEPT INVITATION ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// REJECT INVITATION
+// =====================================================
+
+async function rejectInvitation(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const member =
+            await Member.findOne({
+                _id:
+                    req.params.memberId,
+
+                user:
+                    userId,
+
+                status:
+                    "pending",
+            });
+
+        if (!member) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Invitation not found",
+            });
+        }
+
+        member.status =
+            "rejected";
+
+        await member.save();
+
+        return res.json({
+            success: true,
+
+            message:
+                "Invitation rejected successfully",
+        });
+
+    } catch (error) {
+        console.error(
+            "REJECT INVITATION ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// REMOVE MEMBER
+// =====================================================
+
+async function removeMember(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const access =
+            await findUserSmartHome(
+                userId
+            );
+
+        if (!access) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Smart home not found",
+            });
+        }
+
+        const {
+            smartHome,
+        } = access;
+
+        // -------------------------------------------------
+        // CHECK PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await checkMemberManagementPermission(
+                userId,
+                smartHome
+            );
+
+        if (!allowed) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You do not have permission to manage members",
+            });
+        }
+
+        // -------------------------------------------------
+        // FIND MEMBER
+        // -------------------------------------------------
+
+        const member =
+            await Member.findOne({
+                _id:
+                    req.params.memberId,
+
+                smartHome:
+                    smartHome._id,
+            });
+
+        if (!member) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Member not found",
+            });
+        }
+
+        // -------------------------------------------------
+        // OWNER CANNOT BE REMOVED
+        // -------------------------------------------------
+
+        if (
+            member.user.toString() ===
+            smartHome.owner.toString()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Smart Home owner cannot be removed",
+            });
+        }
+
+        await member.deleteOne();
+
+        return res.json({
+            success: true,
+
+            message:
+                "Member removed successfully",
+        });
+
+    } catch (error) {
+        console.error(
+            "REMOVE MEMBER ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// UPDATE MEMBER PERMISSIONS
+// =====================================================
+
+async function updateMemberPermissions(
+    req,
+    res
+) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const access =
+            await findUserSmartHome(
+                userId
+            );
+
+        if (!access) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Smart home not found",
+            });
+        }
+
+        const {
+            smartHome,
+        } = access;
+
+        // -------------------------------------------------
+        // CHECK PERMISSION
+        // -------------------------------------------------
+
+        const allowed =
+            await checkMemberManagementPermission(
+                userId,
+                smartHome
+            );
+
+        if (!allowed) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You do not have permission to manage members",
+            });
+        }
+
+        // -------------------------------------------------
+        // FIND MEMBER
+        // -------------------------------------------------
+
+        const member =
+            await Member.findOne({
+                _id:
+                    req.params.memberId,
+
+                smartHome:
+                    smartHome._id,
+
+                status:
+                    "accepted",
+            });
+
+        if (!member) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Member not found",
+            });
+        }
+
+        // -------------------------------------------------
+        // OWNER PERMISSIONS CANNOT BE CHANGED
+        // -------------------------------------------------
+
+        if (
+            member.user.toString() ===
+            smartHome.owner.toString()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Owner permissions cannot be changed",
+            });
+        }
+
+        // -------------------------------------------------
+        // PREVENT SELF-PERMISSION ESCALATION
+        // -------------------------------------------------
+
+        if (
+            member.user.toString() ===
+            userId.toString()
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "You cannot change your own permissions",
+            });
+        }
+
+        // -------------------------------------------------
+        // REQUEST DATA
+        // -------------------------------------------------
+
+        const {
+            controlDevices,
+            controlPump,
+            manageDevices,
+            manageMembers,
+        } = req.body;
+
+        // -------------------------------------------------
+        // UPDATE PERMISSIONS
+        // -------------------------------------------------
+
+        if (
+            typeof controlDevices ===
+            "boolean"
+        ) {
+            member.canControlDevices =
+                controlDevices;
+        }
+
+        if (
+            typeof controlPump ===
+            "boolean"
+        ) {
+            member.canControlPump =
+                controlPump;
+        }
+
+        if (
+            typeof manageDevices ===
+            "boolean"
+        ) {
+            member.canManageDevices =
+                manageDevices;
+        }
+
+        if (
+            typeof manageMembers ===
+            "boolean"
+        ) {
+            member.canManageMembers =
+                manageMembers;
+        }
+
+        await member.save();
+
+        return res.json({
+            success: true,
+
+            message:
+                "Member permissions updated successfully",
+
+            member,
+        });
+
+    } catch (error) {
+        console.error(
+            "UPDATE MEMBER PERMISSIONS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// LEAVE SMART HOME
+// =====================================================
+
+async function leaveSmartHome(req, res) {
+    try {
+        const userId =
+            req.user.userId;
+
+        const membership =
+            await Member.findOne({
+                user:
+                    userId,
+
+                status:
+                    "accepted",
+            });
+
+        if (!membership) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "You are not a member of any Smart Home",
+            });
+        }
+
+        await membership.deleteOne();
+
+        console.log(
+            "USER LEFT SMART HOME:",
+            userId
+        );
+
+        return res.json({
+            success: true,
+
+            message:
+                "You left the Smart Home successfully",
+        });
+
+    } catch (error) {
+        console.error(
+            "LEAVE SMART HOME ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Server error",
+        });
+    }
+}
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = {
+    getMembers,
+    addMember,
+    getMyInvitations,
+    acceptInvitation,
+    rejectInvitation,
+    removeMember,
+    updateMemberPermissions,
+    leaveSmartHome,
+};
+
+
+=== FILE: F:\finalyearproject\backend\controllers\notificationController.js ===
+const Notification = require("../models/Notification");
+const SmartHome = require("../models/SmartHome");
+
+// =====================================================
+// GET USER NOTIFICATIONS
+//
+// GET /user/notifications
+//
+// Returns notifications for the logged-in user.
+// =====================================================
+
+async function getNotifications(req, res) {
+
+    try {
+
+        const userId =
+            req.user.userId;
+
+        console.log();
+        console.log("=================================");
+        console.log("GET USER NOTIFICATIONS");
+        console.log("=================================");
+        console.log("User:", userId);
+
+        const notifications =
+            await Notification.find({
+                user: userId,
+            })
+            .sort({
+                createdAt: -1,
+            })
+            .limit(50);
+
+        const unreadCount =
+            await Notification.countDocuments({
+                user: userId,
+                isRead: false,
+            });
+
+        console.log(
+            "Notifications:",
+            notifications.length
+        );
+
+        console.log(
+            "Unread:",
+            unreadCount
+        );
+
+        console.log("=================================");
+
+        return res.json({
+
+            success: true,
+
+            notifications,
+
+            unreadCount,
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "GET NOTIFICATIONS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// MARK NOTIFICATION AS READ
+//
+// PUT /user/notifications/:notificationId/read
+// =====================================================
+
+async function markNotificationRead(
+    req,
+    res
+) {
+
+    try {
+
+        const userId =
+            req.user.userId;
+
+        const {
+            notificationId,
+        } = req.params;
+
+        console.log();
+        console.log("=================================");
+        console.log("MARK NOTIFICATION AS READ");
+        console.log("=================================");
+        console.log("User:", userId);
+        console.log(
+            "Notification:",
+            notificationId
+        );
+
+        const notification =
+            await Notification.findOne({
+
+                _id:
+                    notificationId,
+
+                user:
+                    userId,
+
+            });
+
+        if (!notification) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Notification not found",
+
+            });
+        }
+
+        notification.isRead =
+            true;
+
+        await notification.save();
+
+        console.log(
+            "Notification marked as read."
+        );
+
+        console.log("=================================");
+
+        return res.json({
+
+            success: true,
+
+            message:
+                "Notification marked as read",
+
+            notification,
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "MARK NOTIFICATION READ ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// MARK ALL NOTIFICATIONS AS READ
+//
+// PUT /user/notifications/read-all
+// =====================================================
+
+async function markAllNotificationsRead(
+    req,
+    res
+) {
+
+    try {
+
+        const userId =
+            req.user.userId;
+
+        console.log();
+        console.log("=================================");
+        console.log("MARK ALL NOTIFICATIONS AS READ");
+        console.log("=================================");
+        console.log("User:", userId);
+
+        const result =
+            await Notification.updateMany(
+
+                {
+                    user:
+                        userId,
+
+                    isRead:
+                        false,
+                },
+
+                {
+                    $set: {
+
+                        isRead:
+                            true,
+
+                    },
+                }
+
+            );
+
+        console.log(
+            "Notifications updated:",
+            result.modifiedCount
+        );
+
+        console.log("=================================");
+
+        return res.json({
+
+            success: true,
+
+            message:
+                "All notifications marked as read",
+
+            updated:
+                result.modifiedCount,
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "MARK ALL NOTIFICATIONS READ ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// DELETE NOTIFICATION
+//
+// DELETE /user/notifications/:notificationId
+// =====================================================
+
+async function deleteNotification(
+    req,
+    res
+) {
+
+    try {
+
+        const userId =
+            req.user.userId;
+
+        const {
+            notificationId,
+        } = req.params;
+
+        const notification =
+            await Notification.findOne({
+
+                _id:
+                    notificationId,
+
+                user:
+                    userId,
+
+            });
+
+        if (!notification) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Notification not found",
+
+            });
+        }
+
+        await notification.deleteOne();
+
+        console.log(
+            "Notification deleted:",
+            notificationId
+        );
+
+        return res.json({
+
+            success: true,
+
+            message:
+                "Notification deleted",
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "DELETE NOTIFICATION ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// CREATE NOTIFICATION
+//
+// INTERNAL FUNCTION
+//
+// Used by other backend controllers.
+//
+// =====================================================
+
+async function createNotification({
+    userId,
+    smartHomeId,
+    type,
+    title,
+    message,
+}) {
+
+    try {
+
+        if (
+            !userId ||
+            !smartHomeId ||
+            !type ||
+            !title ||
+            !message
+        ) {
+
+            console.error(
+                "CREATE NOTIFICATION: Missing required data"
+            );
+
+            return null;
+        }
+
+        const notification =
+            await Notification.create({
+
+                user:
+                    userId,
+
+                smartHome:
+                    smartHomeId,
+
+                type:
+                    type,
+
+                title:
+                    title,
+
+                message:
+                    message,
+
+                isRead:
+                    false,
+
+            });
+
+        console.log();
+        console.log(
+            "NOTIFICATION CREATED:",
+            notification._id.toString()
+        );
+
+        console.log(
+            "Type:",
+            type
+        );
+
+        console.log(
+            "Title:",
+            title
+        );
+
+        console.log(
+            "Message:",
+            message
+        );
+
+        console.log();
+
+        return notification;
+
+    } catch (error) {
+
+        console.error(
+            "CREATE NOTIFICATION ERROR:",
+            error
+        );
+
+        return null;
+    }
+}
+
+
+// =====================================================
+// CREATE DEVICE NOTIFICATION
+//
+// INTERNAL FUNCTION
+//
+// Called when a normal device R1-R6 is turned ON/OFF.
+//
+// =====================================================
+
+async function createDeviceNotification({
+    userId,
+    smartHome,
+    device,
+    state,
+}) {
+
+    try {
+
+        if (!smartHome) {
+
+            console.error(
+                "DEVICE NOTIFICATION: SmartHome missing"
+            );
+
+            return null;
+        }
+
+        if (!device) {
+
+            console.error(
+                "DEVICE NOTIFICATION: Device missing"
+            );
+
+            return null;
+        }
+
+        if (
+            !["ON", "OFF"].includes(state)
+        ) {
+
+            console.error(
+                "DEVICE NOTIFICATION: Invalid state:",
+                state
+            );
+
+            return null;
+        }
+
+        const notification =
+            await createNotification({
+
+               userId:
+    userId,
+
+                smartHomeId:
+                    smartHome._id,
+
+                type:
+                    "device",
+
+                title:
+                    "Device State Changed",
+
+                message:
+                    `${device.name} turned ${state}.`,
+
+            });
+
+        return notification;
+
+    } catch (error) {
+
+        console.error(
+            "CREATE DEVICE NOTIFICATION ERROR:",
+            error
+        );
+
+        return null;
+    }
+}
+
+
+// =====================================================
+// CREATE DOOR ALARM NOTIFICATION
+//
+// INTERNAL FUNCTION
+//
+// Called when:
+//
+// Door opens
+// +
+// Alarm is armed
+// +
+// Alarm was previously not triggered
+//
+// =====================================================
+
+async function createDoorAlarmNotification({
+    smartHome,
+}) {
+
+    try {
+
+        if (!smartHome) {
+
+            console.error(
+                "DOOR ALARM NOTIFICATION: SmartHome missing"
+            );
+
+            return null;
+        }
+
+        if (
+            smartHome.alarmEnabled !== true
+        ) {
+
+            console.log(
+                "DOOR ALARM NOTIFICATION: Alarm is not armed."
+            );
+
+            return null;
+        }
+
+        const notification =
+            await createNotification({
+
+                userId:
+                    smartHome.owner,
+
+                smartHomeId:
+                    smartHome._id,
+
+                type:
+                    "door_alarm",
+
+                title:
+                    "Security Alert",
+
+                message:
+                    "Door opened while the alarm was armed.",
+
+            });
+
+        return notification;
+
+    } catch (error) {
+
+        console.error(
+            "CREATE DOOR ALARM NOTIFICATION ERROR:",
+            error
+        );
+
+        return null;
+    }
+}
+
+
+// =====================================================
+// CREATE PUMP NOTIFICATION
+//
+// INTERNAL FUNCTION
+//
+// Called when:
+//
+// Water Pump R8 changes state.
+//
+// =====================================================
+
+async function createPumpNotification({
+    smartHome,
+    state,
+}) {
+
+    try {
+
+        if (!smartHome) {
+
+            console.error(
+                "PUMP NOTIFICATION: SmartHome missing"
+            );
+
+            return null;
+        }
+
+        if (
+            !["ON", "OFF"].includes(state)
+        ) {
+
+            console.error(
+                "PUMP NOTIFICATION: Invalid state:",
+                state
+            );
+
+            return null;
+        }
+
+        const notification =
+            await createNotification({
+
+                userId:
+                    smartHome.owner,
+
+                smartHomeId:
+                    smartHome._id,
+
+                type:
+                    "pump",
+
+                title:
+                    "Water Pump",
+
+                message:
+                    `Water pump turned ${state}.`,
+
+            });
+
+        return notification;
+
+    } catch (error) {
+
+        console.error(
+            "CREATE PUMP NOTIFICATION ERROR:",
+            error
+        );
+
+        return null;
+    }
+}
+
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = {
+
+    getNotifications,
+
+    markNotificationRead,
+
+    markAllNotificationsRead,
+
+    deleteNotification,
+
+    createNotification,
+
+    createDeviceNotification,
+
+    createDoorAlarmNotification,
+
+    createPumpNotification,
+
+};
+
+
+
+=== FILE: F:\finalyearproject\backend\controllers\pumpController.js ===
+const SmartHome = require("../models/SmartHome");
+
+// =====================================================
+// FIND OWNER SMART HOME
+// =====================================================
+
+async function findOwnerHome(userId) {
+    return SmartHome.findOne({
+        owner: userId,
+    });
+}
+
+// =====================================================
+// GET PUMP STATUS
+// =====================================================
+
+async function getPumpStatus(req, res) {
+    try {
+        const userId = req.user.userId;
+
+        const smartHome =
+            await findOwnerHome(userId);
+
+        if (!smartHome) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
+
+        return res.json({
+            success: true,
+
+            pump: {
+                relay: smartHome.pumpRelay || "R8",
+
+                isOn:
+                    smartHome.pumpIsOn === true,
+
+                status:
+                    smartHome.pumpIsOn === true
+                        ? "running"
+                        : "off",
+
+                lastSeen:
+                    smartHome.lastSeen,
+            },
+        });
+
+    } catch (error) {
+
+        console.error(
+            "GET PUMP STATUS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+// =====================================================
+// START PUMP
+// =====================================================
+
+async function startPump(req, res) {
+    try {
+        const userId = req.user.userId;
+
+        const smartHome =
+            await findOwnerHome(userId);
+
+        if (!smartHome) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
+
+        // R8 is permanently reserved for pump
+        smartHome.pumpRelay = "R8";
+
+        smartHome.pumpIsOn = true;
+
+        await smartHome.save();
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "WATER PUMP STARTED"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+        console.log(
+            "Relay:",
+            "R8"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return res.json({
+            success: true,
+
+            message:
+                "Water pump started successfully",
+
+            pump: {
+                relay: "R8",
+                isOn: true,
+                status: "running",
+            },
+        });
+
+    } catch (error) {
+
+        console.error(
+            "START PUMP ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+// =====================================================
+// STOP PUMP
+// =====================================================
+
+async function stopPump(req, res) {
+    try {
+        const userId = req.user.userId;
+
+        const smartHome =
+            await findOwnerHome(userId);
+
+        if (!smartHome) {
+            return res.status(404).json({
+                success: false,
+                message: "Smart home not found",
+            });
+        }
+
+        // R8 is permanently reserved for pump
+        smartHome.pumpRelay = "R8";
+
+        smartHome.pumpIsOn = false;
+
+        await smartHome.save();
+
+        console.log(
+            "================================="
+        );
+
+        console.log(
+            "WATER PUMP STOPPED"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+        console.log(
+            "Relay:",
+            "R8"
+        );
+
+        console.log(
+            "================================="
+        );
+
+        return res.json({
+            success: true,
+
+            message:
+                "Water pump stopped successfully",
+
+            pump: {
+                relay: "R8",
+                isOn: false,
+                status: "off",
+            },
+        });
+
+    } catch (error) {
+
+        console.error(
+            "STOP PUMP ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error",
+        });
+    }
+}
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = {
+    getPumpStatus,
+    startPump,
+    stopPump,
+};
+
+
+=== FILE: F:\finalyearproject\backend\controllers\sensorController.js ===
+const SmartHome = require("../models/SmartHome");
+const Sensor = require("../models/Sensor");
+const Member = require("../models/Member");
+
+const {
+    createDoorAlarmNotification,
+} = require("./notificationController");
+
+console.log("SENSOR CONTROLLER LOADED");
+
+
+// =====================================================
+// RECEIVE SENSOR DATA FROM ESP32
+//
+// POST /esp32/sensors
+//
+// ESP32 sends:
+//
+// {
+//     "esp32Id": "ESP32-XXXX",
+//     "temperature": 27.50,
+//     "humidity": 61.20,
+//     "doorStatus": "closed"
+// }
+//
+// =====================================================
+
+async function receiveSensorData(req, res) {
+
+    try {
+
+        const {
+            esp32Id,
+            temperature,
+            humidity,
+            doorStatus,
+        } = req.body;
+
+
+        console.log();
+        console.log("==============================");
+        console.log("ESP32 SENSOR DATA RECEIVED");
+        console.log("==============================");
+
+        console.log("ESP32 ID:", esp32Id);
+        console.log("Temperature:", temperature);
+        console.log("Humidity:", humidity);
+        console.log("Door:", doorStatus);
+
+
+        // =================================================
+        // VALIDATE ESP32 ID
+        // =================================================
+
+        if (!esp32Id) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "ESP32 ID is required",
+
+            });
+        }
+
+
+        const cleanEsp32Id =
+            String(esp32Id).trim();
+
+
+        // =================================================
+        // VALIDATE TEMPERATURE
+        // =================================================
+
+        const numericTemperature =
+            Number(temperature);
+
+
+        if (
+            temperature === undefined ||
+            temperature === null ||
+            !Number.isFinite(numericTemperature)
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Valid temperature is required",
+
+            });
+        }
+
+
+        // =================================================
+        // VALIDATE HUMIDITY
+        // =================================================
+
+        const numericHumidity =
+            Number(humidity);
+
+
+        if (
+            humidity === undefined ||
+            humidity === null ||
+            !Number.isFinite(numericHumidity)
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Valid humidity is required",
+
+            });
+        }
+
+
+        // =================================================
+        // VALIDATE DOOR STATUS
+        // =================================================
+
+        const normalizedDoorStatus =
+            String(doorStatus || "")
+                .trim()
+                .toLowerCase();
+
+
+        if (
+            !["open", "closed"].includes(
+                normalizedDoorStatus
+            )
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    'Door status must be either "open" or "closed"',
+
+            });
+        }
+
+
+        // =================================================
+        // FIND PAIRED SMART HOME
+        // =================================================
+
+        const smartHome =
+            await SmartHome.findOne({
+
+                esp32Id:
+                    cleanEsp32Id,
+
+            });
+
+
+        if (!smartHome) {
+
+            console.log(
+                "ESP32 is not paired:",
+                cleanEsp32Id
+            );
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "ESP32 is not paired with any Smart Home",
+
+            });
+        }
+
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+        console.log(
+            "Smart Home ID:",
+            smartHome._id.toString()
+        );
+
+
+        // =================================================
+        // SAVE HISTORICAL SENSOR READING
+        // =================================================
+
+        const sensor =
+            await Sensor.create({
+
+                smartHome:
+                    smartHome._id,
+
+                esp32Id:
+                    cleanEsp32Id,
+
+                temperature:
+                    numericTemperature,
+
+                humidity:
+                    numericHumidity,
+
+                doorStatus:
+                    normalizedDoorStatus,
+
+            });
+
+
+        console.log(
+            "Historical sensor reading saved successfully."
+        );
+
+        console.log(
+            "Sensor ID:",
+            sensor._id.toString()
+        );
+
+
+        // =================================================
+        // UPDATE LATEST SENSOR DATA
+        // =================================================
+
+        smartHome.temperature =
+            numericTemperature;
+
+        smartHome.humidity =
+            numericHumidity;
+
+        smartHome.doorStatus =
+            normalizedDoorStatus;
+
+        smartHome.sensorLastUpdated =
+            new Date();
+
+
+        // =================================================
+        // UPDATE ESP32 CONNECTION
+        // =================================================
+
+        smartHome.status =
+            "connected";
+
+        smartHome.lastSeen =
+            new Date();
+
+
+        // =================================================
+        // REMEMBER PREVIOUS ALARM STATE
+        // =================================================
+
+        const alarmWasAlreadyOn =
+            smartHome.alarmIsOn === true;
+
+
+        // =================================================
+        // DOOR ALARM LOGIC
+        //
+        // alarmEnabled:
+        //     true  = alarm system armed
+        //     false = alarm system disabled
+        //
+        // alarmSilenced:
+        //     true  = current alarm has been silenced
+        //     false = alarm may trigger
+        //
+        // alarmIsOn:
+        //     true  = R7 should be ON
+        //     false = R7 should be OFF
+        // =================================================
+
+
+        // =================================================
+        // ALARM ENABLED
+        // =================================================
+
+        if (
+            smartHome.alarmEnabled === true
+        ) {
+
+
+            // =================================================
+            // DOOR OPEN
+            // =================================================
+
+            if (
+                normalizedDoorStatus === "open"
+            ) {
+
+
+                // =================================================
+                // ALARM HAS NOT BEEN SILENCED
+                // =================================================
+
+                if (
+                    smartHome.alarmSilenced !== true
+                ) {
+
+                    smartHome.alarmIsOn =
+                        true;
+
+
+                    // =================================================
+                    // CREATE NOTIFICATION ONLY ON FIRST TRIGGER
+                    // =================================================
+
+                    if (
+                        !alarmWasAlreadyOn
+                    ) {
+
+                        await createDoorAlarmNotification({
+
+                            smartHome:
+                                smartHome,
+
+                        });
+
+                        console.log(
+                            "DOOR ALARM NOTIFICATION CREATED"
+                        );
+                    }
+
+
+                    console.log();
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "DOOR ALARM TRIGGERED"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "Alarm Enabled: TRUE"
+                    );
+
+                    console.log(
+                        "Alarm Silenced: FALSE"
+                    );
+
+                    console.log(
+                        "Door Status: OPEN"
+                    );
+
+                    console.log(
+                        "R7 Alarm: ON"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+
+                }
+
+
+                // =================================================
+                // ALARM HAS BEEN SILENCED
+                // =================================================
+
+                else {
+
+                    smartHome.alarmIsOn =
+                        false;
+
+
+                    console.log();
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "DOOR ALARM SILENCED"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+
+                    console.log(
+                        "Alarm Enabled: TRUE"
+                    );
+
+                    console.log(
+                        "Alarm Silenced: TRUE"
+                    );
+
+                    console.log(
+                        "Door Status: OPEN"
+                    );
+
+                    console.log(
+                        "R7 Alarm: OFF"
+                    );
+
+                    console.log(
+                        "=============================="
+                    );
+                }
+
+            }
+
+
+            // =================================================
+            // DOOR CLOSED
+            // =================================================
+
+            else {
+
+                smartHome.alarmIsOn =
+                    false;
+
+
+                // -------------------------------------------------
+                // RESET SILENCE
+                //
+                // Once the door is closed, the current alarm
+                // event has ended.
+                //
+                // The next door opening can trigger the alarm
+                // again.
+                // -------------------------------------------------
+
+                smartHome.alarmSilenced =
+                    false;
+
+
+                console.log();
+                console.log(
+                    "=============================="
+                );
+
+                console.log(
+                    "DOOR CLOSED"
+                );
+
+                console.log(
+                    "=============================="
+                );
+
+                console.log(
+                    "Alarm Enabled:",
+                    smartHome.alarmEnabled
+                );
+
+                console.log(
+                    "Alarm Silenced: FALSE"
+                );
+
+                console.log(
+                    "Door Status: CLOSED"
+                );
+
+                console.log(
+                    "R7 Alarm: OFF"
+                );
+
+                console.log(
+                    "=============================="
+                );
+            }
+
+        }
+
+
+        // =================================================
+        // ALARM DISABLED
+        // =================================================
+
+        else {
+
+            smartHome.alarmIsOn =
+                false;
+
+
+            // -------------------------------------------------
+            // RESET SILENCE
+            // -------------------------------------------------
+
+            smartHome.alarmSilenced =
+                false;
+
+
+            console.log();
+            console.log(
+                "=============================="
+            );
+
+            console.log(
+                "ALARM DISABLED"
+            );
+
+            console.log(
+                "=============================="
+            );
+
+            console.log(
+                "Alarm Enabled: FALSE"
+            );
+
+            console.log(
+                "Alarm Silenced: FALSE"
+            );
+
+            console.log(
+                "Door Status:",
+                normalizedDoorStatus
+            );
+
+            console.log(
+                "R7 Alarm: OFF"
+            );
+
+            console.log(
+                "=============================="
+            );
+        }
+
+
+        // =================================================
+        // SAVE SMART HOME
+        // =================================================
+
+        await smartHome.save();
+
+
+        // =================================================
+        // SUCCESS LOG
+        // =================================================
+
+        console.log();
+
+        console.log(
+            "SENSOR DATA SAVED SUCCESSFULLY"
+        );
+
+        console.log(
+            "Smart Home:",
+            smartHome.name
+        );
+
+        console.log(
+            "ESP32:",
+            smartHome.esp32Id
+        );
+
+        console.log(
+            "Temperature:",
+            smartHome.temperature,
+            "Â°C"
+        );
+
+        console.log(
+            "Humidity:",
+            smartHome.humidity,
+            "%"
+        );
+
+        console.log(
+            "Door:",
+            smartHome.doorStatus
+        );
+
+        console.log(
+            "Alarm Enabled:",
+            smartHome.alarmEnabled
+        );
+
+        console.log(
+            "Alarm Silenced:",
+            smartHome.alarmSilenced
+        );
+
+        console.log(
+            "R7 Alarm:",
+            smartHome.alarmIsOn
+                ? "ON"
+                : "OFF"
+        );
+
+        console.log(
+            "Sensor Updated:",
+            smartHome.sensorLastUpdated
+        );
+
+        console.log(
+            "ESP32 Last Seen:",
+            smartHome.lastSeen
+        );
+
+        console.log(
+            "=============================="
+        );
+
+
+        // =================================================
+        // RESPONSE TO ESP32
+        // =================================================
+
+        return res.status(200).json({
+
+            success: true,
+
+            message:
+                "Sensor data received successfully",
+
+            esp32Id:
+                smartHome.esp32Id,
+
+            sensors: {
+
+                temperature:
+                    smartHome.temperature,
+
+                humidity:
+                    smartHome.humidity,
+
+                doorStatus:
+                    smartHome.doorStatus,
+
+                sensorLastUpdated:
+                    smartHome.sensorLastUpdated,
+
+            },
+
+            alarm: {
+
+                name:
+                    "Door Alarm",
+
+                relay:
+                    "R7",
+
+                enabled:
+                    smartHome.alarmEnabled === true,
+
+                silenced:
+                    smartHome.alarmSilenced === true,
+
+                isOn:
+                    smartHome.alarmIsOn === true,
+
+            },
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "ESP32 Sensor Error:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// GET SENSOR DATA BY ESP32 ID
+//
+// GET /esp32/sensors/:esp32Id
+//
+// Existing endpoint.
+// =====================================================
+
+async function getSensorData(
+    req,
+    res
+) {
+
+    try {
+
+        const {
+            esp32Id,
+        } = req.params;
+
+
+        // =================================================
+        // VALIDATE ESP32 ID
+        // =================================================
+
+        if (!esp32Id) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "ESP32 ID is required",
+
+            });
+        }
+
+
+        const cleanEsp32Id =
+            String(esp32Id).trim();
+
+
+        // =================================================
+        // FIND SMART HOME
+        // =================================================
+
+        const smartHome =
+            await SmartHome.findOne({
+
+                esp32Id:
+                    cleanEsp32Id,
+
+            });
+
+
+        if (!smartHome) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "ESP32 is not paired with any Smart Home",
+
+            });
+        }
+
+
+        // =================================================
+        // RESPONSE
+        // =================================================
+
+        return res.json({
+
+            success: true,
+
+            sensors: {
+
+                temperature:
+                    smartHome.temperature ??
+                    null,
+
+                humidity:
+                    smartHome.humidity ??
+                    null,
+
+                doorStatus:
+                    smartHome.doorStatus ??
+                    null,
+
+                sensorLastUpdated:
+                    smartHome.sensorLastUpdated ??
+                    null,
+
+            },
+
+            alarm: {
+
+                name:
+                    "Door Alarm",
+
+                relay:
+                    "R7",
+
+                enabled:
+                    smartHome.alarmEnabled === true,
+
+                silenced:
+                    smartHome.alarmSilenced === true,
+
+                isOn:
+                    smartHome.alarmIsOn === true,
+
+            },
+
+            smartHome: {
+
+                id:
+                    smartHome._id,
+
+                name:
+                    smartHome.name,
+
+                esp32Id:
+                    smartHome.esp32Id,
+
+                status:
+                    smartHome.status,
+
+                lastSeen:
+                    smartHome.lastSeen ??
+                    null,
+
+            },
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "GET SENSOR DATA ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// GET SENSOR DATA FOR LOGGED-IN USER
+//
+// GET /user/sensors
+//
+// Flutter uses this endpoint.
+//
+// Finds Smart Home using:
+//
+// 1. Accepted Member
+// 2. Owner
+//
+// =====================================================
+
+async function getUserSensorData(
+    req,
+    res
+) {
+
+    try {
+
+        // =================================================
+        // GET LOGGED-IN USER
+        // =================================================
+
+        const userId =
+            req.user.userId;
+
+
+        console.log();
+
+        console.log(
+            "=============================="
+        );
+
+        console.log(
+            "GET USER SENSOR DATA"
+        );
+
+        console.log(
+            "User:",
+            userId
+        );
+
+        console.log(
+            "=============================="
+        );
+
+
+        // =================================================
+        // FIND ACCEPTED MEMBERSHIP
+        // =================================================
+
+        const membership =
+            await Member.findOne({
+
+                user:
+                    userId,
+
+                status:
+                    "accepted",
+
+            }).populate(
+                "smartHome"
+            );
+
+
+        let smartHome = null;
+
+
+        // =================================================
+        // ACCEPTED MEMBER
+        // =================================================
+
+        if (
+            membership &&
+            membership.smartHome
+        ) {
+
+            smartHome =
+                membership.smartHome;
+
+
+            console.log(
+                "Using accepted member Smart Home:",
+                smartHome.name
+            );
+        }
+
+
+        // =================================================
+        // OWNER
+        // =================================================
+
+        if (!smartHome) {
+
+            smartHome =
+                await SmartHome.findOne({
+
+                    owner:
+                        userId,
+
+                }).sort({
+
+                    updatedAt:
+                        -1,
+
+                    createdAt:
+                        -1,
+
+                });
+
+
+            if (smartHome) {
+
+                console.log(
+                    "Using owned Smart Home:",
+                    smartHome.name
+                );
+            }
+        }
+
+
+        // =================================================
+        // SMART HOME NOT FOUND
+        // =================================================
+
+        if (!smartHome) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "Smart home not found",
+
+            });
+        }
+
+
+        // =================================================
+        // GET LATEST SENSOR READING
+        //
+        // SmartHome already contains latest values.
+        // Sensor collection contains historical readings.
+        // =================================================
+
+        const latestSensor =
+            await Sensor.findOne({
+
+                smartHome:
+                    smartHome._id,
+
+            }).sort({
+
+                createdAt:
+                    -1,
+
+            });
+
+
+        // =================================================
+        // USE LATEST SENSOR DOCUMENT IF AVAILABLE
+        //
+        // SmartHome values are preferred.
+        // Historical Sensor document is fallback.
+        // =================================================
+
+        const temperature =
+            smartHome.temperature ??
+            latestSensor?.temperature ??
+            null;
+
+
+        const humidity =
+            smartHome.humidity ??
+            latestSensor?.humidity ??
+            null;
+
+
+        const doorStatus =
+            smartHome.doorStatus ??
+            latestSensor?.doorStatus ??
+            null;
+
+
+        const sensorLastUpdated =
+            smartHome.sensorLastUpdated ??
+            latestSensor?.createdAt ??
+            null;
+
+
+        // =================================================
+        // RESPONSE LOG
+        // =================================================
+
+        console.log(
+            "Temperature:",
+            temperature
+        );
+
+        console.log(
+            "Humidity:",
+            humidity
+        );
+
+        console.log(
+            "Door:",
+            doorStatus
+        );
+
+        console.log(
+            "Alarm Enabled:",
+            smartHome.alarmEnabled
+        );
+
+        console.log(
+            "Alarm Silenced:",
+            smartHome.alarmSilenced
+        );
+
+        console.log(
+            "Alarm Running:",
+            smartHome.alarmIsOn
+        );
+
+        console.log(
+            "ESP32 Status:",
+            smartHome.status
+        );
+
+        console.log(
+            "=============================="
+        );
+
+
+        // =================================================
+        // RESPONSE
+        // =================================================
+
+        return res.status(200).json({
+
+            success: true,
+
+            sensors: {
+
+                temperature:
+                    temperature,
+
+                humidity:
+                    humidity,
+
+                doorStatus:
+                    doorStatus,
+
+                sensorLastUpdated:
+                    sensorLastUpdated,
+
+            },
+
+            alarm: {
+
+                name:
+                    "Door Alarm",
+
+                relay:
+                    "R7",
+
+                enabled:
+                    smartHome.alarmEnabled === true,
+
+                silenced:
+                    smartHome.alarmSilenced === true,
+
+                isOn:
+                    smartHome.alarmIsOn === true,
+
+            },
+
+            smartHome: {
+
+                id:
+                    smartHome._id,
+
+                name:
+                    smartHome.name,
+
+                esp32Id:
+                    smartHome.esp32Id ??
+                    null,
+
+                status:
+                    smartHome.status ??
+                    null,
+
+                lastSeen:
+                    smartHome.lastSeen ??
+                    null,
+
+            },
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "GET USER SENSOR DATA ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error",
+
+        });
+    }
+}
+
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = {
+
+    receiveSensorData,
+
+    getSensorData,
+
+    getUserSensorData,
+
+};
+
+
+
+=== FILE: F:\finalyearproject\backend\data\storage.js ===
+const devices = {
+    R1: "OFF",
+    R2: "OFF",
+    R3: "OFF",
+    R4: "OFF",
+    R5: "OFF",
+    R6: "OFF",
+    R7: "OFF",
+    R8: "OFF",
+};
+
+let automations = [];
+
+const pump = {
+    running: false,
+    duration: 0,
+    remaining: 0,
+    timer: null,
+};
+
+module.exports = {
+    devices,
+    automations,
+    pump,
+};
+
+
+=== FILE: F:\finalyearproject\backend\database\db.js ===
+const mongoose = require("mongoose");
+const dns = require("dns");
+require("dotenv").config();
+
+// Use reliable public DNS servers for MongoDB SRV lookup
+dns.setServers(["1.1.1.1", "8.8.8.8"]);
+
+async function connectDB() {
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+
+        console.log("MongoDB Connected Successfully");
+    } catch (error) {
+        console.error("MongoDB Connection Failed:");
+        console.error(error.message);
+
+        process.exit(1);
+    }
+}
+
+module.exports = connectDB;
+
+
+=== FILE: F:\finalyearproject\backend\middleware\authMiddleware.js ===
+const jwt = require("jsonwebtoken");
+require("dotenv").config();
+
+function protect(req, res, next) {
+
+    try {
+
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader) {
+            return res.status(401).json({
+                success: false,
+                message: "Authentication required",
+            });
+        }
+
+        const token = authHeader.startsWith("Bearer ")
+            ? authHeader.split(" ")[1]
+            : null;
+
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: "Invalid authorization format",
+            });
+        }
+
+        const decoded = jwt.verify(
+            token,
+            process.env.JWT_SECRET
+        );
+
+        req.user = decoded;
+
+        next();
+
+    } catch (error) {
+
+        console.error("JWT Error:", error.message);
+
+        return res.status(401).json({
+            success: false,
+            message: "Invalid or expired token",
+        });
+
+    }
+}
+
+module.exports = protect;
+
+
+=== FILE: F:\finalyearproject\backend\models\Device.js ===
+const mongoose = require("mongoose");
+
+const deviceSchema = new mongoose.Schema(
+    {
+        // =====================================================
+        // DEVICE NAME
+        // =====================================================
+
+        // Name shown in Flutter
+        // Examples:
+        // Living Room Light
+        // Bedroom Fan
+        // Door Alarm
+
+        name: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        // =====================================================
+        // DEVICE ID
+        // =====================================================
+
+        deviceId: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        // =====================================================
+        // DEVICE TYPE
+        // =====================================================
+
+        type: {
+            type: String,
+            required: true,
+            trim: true,
+            lowercase: true,
+
+            enum: [
+                "light",
+                "fan",
+                "socket",
+                "appliance",
+                "alarm",
+                "other",
+            ],
+        },
+
+        // =====================================================
+        // RELAY
+        // =====================================================
+
+        // R1-R6 = Normal devices
+        // R7    = Door Alarm
+        // R8    = Water Pump
+        //
+        // R8 is NOT stored in Device collection.
+        //
+        // R7 can only be used by an alarm device.
+
+        relay: {
+            type: String,
+            required: true,
+
+            enum: [
+                "R1",
+                "R2",
+                "R3",
+                "R4",
+                "R5",
+                "R6",
+                "R7",
+            ],
+        },
+
+        // =====================================================
+        // CURRENT DEVICE STATE
+        // =====================================================
+
+        isOn: {
+            type: Boolean,
+            default: false,
+        },
+
+        // =====================================================
+        // SMART HOME
+        // =====================================================
+
+        home: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SmartHome",
+            required: true,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+// =====================================================
+// ONE RELAY PER SMART HOME
+// =====================================================
+
+deviceSchema.index(
+    {
+        home: 1,
+        relay: 1,
+    },
+    {
+        unique: true,
+    }
+);
+
+// =====================================================
+// ONE DEVICE ID PER SMART HOME
+// =====================================================
+
+deviceSchema.index(
+    {
+        home: 1,
+        deviceId: 1,
+    },
+    {
+        unique: true,
+    }
+);
+
+module.exports = mongoose.model(
+    "Device",
+    deviceSchema
+);
+
+
+=== FILE: F:\finalyearproject\backend\models\EnergyUsage.js ===
+const mongoose = require("mongoose");
+
+// =====================================================
+// ENERGY USAGE SCHEMA
+//
+// Stores historical electricity usage.
+//
+// Energy is calculated from:
+//
+// Power (kW) Ã— Runtime (hours) = Energy (kWh)
+//
+// Example:
+//
+// 550W pump = 0.55kW
+// Running for 30 minutes:
+//
+// 0.55 Ã— 0.5 = 0.275 kWh
+//
+// =====================================================
+
+const energyUsageSchema = new mongoose.Schema(
+    {
+        // =============================================
+        // SMART HOME
+        // =============================================
+
+        smartHome: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SmartHome",
+            required: true,
+            index: true,
+        },
+
+        // =============================================
+        // DEVICE
+        // =============================================
+
+        device: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Device",
+            default: null,
+            index: true,
+        },
+
+        // =============================================
+        // DEVICE INFORMATION
+        //
+        // These are stored directly so historical
+        // records remain understandable even if the
+        // device is later renamed or deleted.
+        // =============================================
+
+        deviceName: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        relay: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        // =============================================
+        // POWER
+        // =============================================
+
+        powerWatts: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        powerKW: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        // =============================================
+        // RUNTIME
+        // =============================================
+
+        durationMinutes: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        // =============================================
+        // ENERGY
+        // =============================================
+
+        energyKWh: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        // =============================================
+        // ELECTRICITY COST
+        // =============================================
+
+        electricityRate: {
+            type: Number,
+            required: true,
+            min: 0,
+            default: 65,
+        },
+
+        cost: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+
+        // =============================================
+        // START / END TIME
+        // =============================================
+
+        startedAt: {
+            type: Date,
+            required: true,
+            index: true,
+        },
+
+        endedAt: {
+            type: Date,
+            required: true,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+// =====================================================
+// ANALYTICS INDEXES
+// =====================================================
+
+// Smart Home + newest records
+energyUsageSchema.index({
+    smartHome: 1,
+    createdAt: -1,
+});
+
+// Smart Home + date range
+energyUsageSchema.index({
+    smartHome: 1,
+    startedAt: -1,
+});
+
+// Smart Home + device + date
+energyUsageSchema.index({
+    smartHome: 1,
+    device: 1,
+    startedAt: -1,
+});
+
+// Relay-based historical usage
+energyUsageSchema.index({
+    smartHome: 1,
+    relay: 1,
+    startedAt: -1,
+});
+
+module.exports = mongoose.model(
+    "EnergyUsage",
+    energyUsageSchema
+);
+
+
+
+=== FILE: F:\finalyearproject\backend\models\Member.js ===
+const mongoose = require("mongoose");
+
+const memberSchema = new mongoose.Schema(
+    {
+        // =====================================
+        // SMART HOME
+        // =====================================
+
+        smartHome: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SmartHome",
+            required: true,
+        },
+
+        // =====================================
+        // MEMBER USER
+        // =====================================
+
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+
+        // =====================================
+        // ROLE
+        // =====================================
+
+        role: {
+            type: String,
+            enum: [
+                "member",
+                "admin",
+            ],
+            default: "member",
+        },
+
+        // =====================================
+        // PERMISSIONS
+        // =====================================
+
+        canControlDevices: {
+            type: Boolean,
+            default: true,
+        },
+
+        canControlPump: {
+            type: Boolean,
+            default: false,
+        },
+
+        canManageDevices: {
+            type: Boolean,
+            default: false,
+        },
+
+        canManageMembers: {
+            type: Boolean,
+            default: false,
+        },
+
+        // =====================================
+        // INVITATION STATUS
+        // =====================================
+
+        status: {
+            type: String,
+            enum: [
+                "pending",
+                "accepted",
+                "rejected",
+            ],
+            default: "pending",
+        },
+
+        // =====================================
+        // INVITED BY
+        // =====================================
+
+        invitedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+// =====================================
+// PREVENT DUPLICATE MEMBERS
+// =====================================
+
+memberSchema.index(
+    {
+        smartHome: 1,
+        user: 1,
+    },
+    {
+        unique: true,
+    }
+);
+
+module.exports =
+    mongoose.model("Member", memberSchema);
+
+
+=== FILE: F:\finalyearproject\backend\models\Notification.js ===
+const mongoose = require("mongoose");
+
+const notificationSchema = new mongoose.Schema(
+    {
+
+        // =============================================
+        // USER
+        // =============================================
+
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+            index: true,
+        },
+
+        // =============================================
+        // SMART HOME
+        // =============================================
+
+        smartHome: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SmartHome",
+            required: true,
+            index: true,
+        },
+
+        // =============================================
+        // NOTIFICATION TYPE
+        // =============================================
+
+        type: {
+            type: String,
+            enum: [
+                "door_alarm",
+                "device",
+                "pump",
+                "system",
+                "sensor",
+            ],
+            required: true,
+        },
+
+        // =============================================
+        // TITLE
+        // =============================================
+
+        title: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        // =============================================
+        // MESSAGE
+        // =============================================
+
+        message: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        // =============================================
+        // READ STATUS
+        // =============================================
+
+        isRead: {
+            type: Boolean,
+            default: false,
+            index: true,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+// =============================================
+// NOTIFICATION QUERY INDEX
+// =============================================
+
+notificationSchema.index({
+    user: 1,
+    createdAt: -1,
+});
+
+notificationSchema.index({
+    user: 1,
+    isRead: 1,
+    createdAt: -1,
+});
+
+module.exports = mongoose.model(
+    "Notification",
+    notificationSchema
+);
+
+
+
+=== FILE: F:\finalyearproject\backend\models\Sensor.js ===
+
+const mongoose = require("mongoose");
+
+
+// =====================================================
+// SENSOR SCHEMA
+//
+// Stores historical sensor readings from ESP32.
+//
+// DHT22:
+// - Temperature
+// - Humidity
+//
+// Magnetic Reed Sensor:
+// - Door status
+//
+// Each reading is stored separately so the Analytics
+// screen can later display historical data.
+// =====================================================
+
+const sensorSchema = new mongoose.Schema(
+    {
+
+        // =============================================
+        // SMART HOME
+        // =============================================
+
+        smartHome: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SmartHome",
+            required: true,
+            index: true,
+        },
+
+
+        // =============================================
+        // ESP32
+        // =============================================
+
+        esp32Id: {
+            type: String,
+            required: true,
+            trim: true,
+            index: true,
+        },
+
+
+        // =============================================
+        // TEMPERATURE - DHT22
+        // =============================================
+
+        temperature: {
+            type: Number,
+            required: true,
+        },
+
+
+        // =============================================
+        // HUMIDITY - DHT22
+        // =============================================
+
+        humidity: {
+            type: Number,
+            required: true,
+        },
+
+
+        // =============================================
+        // DOOR STATUS - MAGNETIC REED SENSOR
+        // =============================================
+
+        doorStatus: {
+            type: String,
+            enum: [
+                "open",
+                "closed",
+            ],
+            required: true,
+        },
+
+    },
+
+    {
+        timestamps: true,
+    }
+);
+
+
+// =====================================================
+// INDEXES
+// =====================================================
+
+// Latest readings for a Smart Home
+sensorSchema.index({
+    smartHome: 1,
+    createdAt: -1,
+});
+
+
+// Latest readings for an ESP32
+sensorSchema.index({
+    esp32Id: 1,
+    createdAt: -1,
+});
+
+
+module.exports = mongoose.model(
+    "Sensor",
+    sensorSchema
+);
+
+
+
+=== FILE: F:\finalyearproject\backend\models\SmartHome.js ===
+const mongoose = require("mongoose");
+
+const smartHomeSchema = new mongoose.Schema(
+    {
+        // =====================================
+        // OWNER
+        // =====================================
+
+        owner: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+
+        // =====================================
+        // SMART HOME INFORMATION
+        // =====================================
+
+        name: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+
+        // =====================================
+        // SMART HOME MEMBERS
+        // =====================================
+
+        members: [
+            {
+                user: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: "User",
+                    required: true,
+                },
+
+                // Can control R1-R6 normal devices
+                controlDevices: {
+                    type: Boolean,
+                    default: true,
+                },
+
+                // Can control R8 water pump
+                controlPump: {
+                    type: Boolean,
+                    default: true,
+                },
+
+                // Can add/remove other members
+                manageMembers: {
+                    type: Boolean,
+                    default: false,
+                },
+
+                joinedAt: {
+                    type: Date,
+                    default: Date.now,
+                },
+            },
+        ],
+
+        // =====================================
+        // ESP32
+        // =====================================
+
+        esp32Id: {
+            type: String,
+            unique: true,
+            sparse: true,
+            trim: true,
+        },
+
+        status: {
+            type: String,
+            enum: ["connected", "disconnected"],
+            default: "disconnected",
+        },
+
+        // =====================================
+        // ESP32 LAST SEEN
+        // =====================================
+
+        lastSeen: {
+            type: Date,
+            default: null,
+        },
+
+        // =====================================
+        // SENSORS
+        // =====================================
+
+        // DHT22 temperature
+        temperature: {
+            type: Number,
+            default: null,
+        },
+
+        // DHT22 humidity
+        humidity: {
+            type: Number,
+            default: null,
+        },
+
+        // Magnetic reed sensor
+        doorStatus: {
+            type: String,
+            enum: ["open", "closed"],
+            default: "closed",
+        },
+
+        // Last time ESP32 sent sensor data
+        sensorLastUpdated: {
+            type: Date,
+            default: null,
+        },
+
+        // =====================================
+        // DOOR ALARM / BUZZER
+        // =====================================
+
+        // R7 is permanently reserved for alarm
+        alarmRelay: {
+            type: String,
+            enum: ["R7"],
+            default: "R7",
+        },
+
+        // User preference:
+        // true  = alarm system enabled
+        // false = alarm system disabled
+        alarmEnabled: {
+            type: Boolean,
+            default: true,
+        },
+
+        // Actual buzzer state:
+        // true  = R7 ON
+        // false = R7 OFF
+        alarmIsOn: {
+            type: Boolean,
+            default: false,
+        },
+
+        // Temporary silence state:
+        // true  = current alarm has been silenced
+        // false = alarm is allowed to trigger normally
+        alarmSilenced: {
+            type: Boolean,
+            default: false,
+        },
+
+        // =====================================
+        // WATER PUMP
+        // =====================================
+
+        // R8 is permanently reserved for water pump
+        pumpRelay: {
+            type: String,
+            enum: ["R8"],
+            default: "R8",
+        },
+
+        // Actual pump state
+        pumpIsOn: {
+            type: Boolean,
+            default: false,
+        },
+
+        // =====================================
+        // ESP32 PAIRING
+        // =====================================
+
+        pairingCode: {
+            type: String,
+            default: null,
+        },
+
+        pairingCodeExpiresAt: {
+            type: Date,
+            default: null,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+module.exports = mongoose.model(
+    "SmartHome",
+    smartHomeSchema
+);
+
+
+=== FILE: F:\finalyearproject\backend\models\User.js ===
+const mongoose = require("mongoose");
+
+const userSchema = new mongoose.Schema(
+  {
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+    },
+
+    password: {
+      type: String,
+      required: true,
+    },
+
+    // ===============================
+    // Password Reset
+    // ===============================
+
+    resetPasswordCode: {
+      type: String,
+      default: null,
+    },
+
+    resetPasswordCodeExpires: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+module.exports = mongoose.model("User", userSchema);
+
+
+=== FILE: F:\finalyearproject\backend\routes\analyticsRoutes.js ===
+const express = require("express");
+
+const router = express.Router();
+
+
+// =====================================================
+// CONTROLLER
+// =====================================================
+
+const {
+    getAnalytics,
+} = require("../controllers/analyticsController");
+
+
+// =====================================================
+// AUTHENTICATION
+// =====================================================
+
+const protect =
+    require("../middleware/authMiddleware");
+
+
+// =====================================================
+// GET SMART HOME ANALYTICS
+//
+// GET /user/analytics
+//
+// Authentication required.
+//
+// Returns:
+//
+// - Smart Home information
+// - Total devices
+// - Devices ON
+// - Devices OFF
+// - Water pump state
+// - Pump power
+// - Estimated energy per hour
+// - Estimated electricity cost
+// - Temperature
+// - Humidity
+// - Door status
+//
+// =====================================================
+
+router.get(
+    "/analytics",
+    protect,
+    getAnalytics
+);
+
+
+// =====================================================
+// EXPORT
+// =====================================================
+
+module.exports = router;
+
+
+
+=== FILE: F:\finalyearproject\backend\routes\authRoutes.js ===
+const express = require("express");
+
+const router = express.Router();
+
+const {
+    registerUser,
+    loginUser,
+    forgotPassword,
+    resetPassword,
+    deleteAccount,
+} = require("../controllers/authController");
+
+const protect = require("../middleware/authMiddleware");
+
+// =====================================
+// Authentication
+// =====================================
+
+router.post(
+    "/auth/register",
+    registerUser
+);
+
+router.post(
+    "/auth/login",
+    loginUser
+);
+
+// =====================================
+// Password Reset
+// =====================================
+
+router.post(
+    "/auth/forgot-password",
+    forgotPassword
+);
+
+router.post(
+    "/auth/reset-password",
+    resetPassword
+);
+
+// =====================================
+// Delete Account Permanently
+// =====================================
+
+router.delete(
+    "/auth/delete-account",
+    protect,
+    deleteAccount
+);
+
+module.exports = router;
+
+
+=== FILE: F:\finalyearproject\backend\routes\automationRoutes.js ===
+const express = require('express');
+const router = express.Router();
+
+const {
+    createAutomation,
+    getAutomations,
+    updateAutomation,
+    deleteAutomation,
+    toggleAutomation,
+} = require("../controllers/automationController");
+
+
+// ===============================
+// Automation Routes
+// ===============================
+
+router.post("/automation", createAutomation);
+router.get("/automations", getAutomations);
+router.put("/automation/:id", updateAutomation);
+router.delete("/automation/:id", deleteAutomation);
+router.patch("/automation/:id/toggle", toggleAutomation);
+module.exports = router;
+
+
+=== FILE: F:\finalyearproject\backend\routes\deviceRoutes.js ===
+const express = require("express");
+
+const router = express.Router();
+
+const {
+    getDevices,
+    getUserDevices,
+    addDevice,
+    controlDevice,
+    deleteDevice,
+    controlPump,
+    controlAlarm,
+    silenceAlarm,
+} = require("../controllers/deviceController");
+
+const protect = require("../middleware/authMiddleware");
+
+// =====================================================
+// DOOR ALARM CONTROL
+//
+// R7 = Door Alarm
+// =====================================================
+
+// Arm / Disarm Door Alarm
+router.put(
+    "/user/alarm/control",
+    protect,
+    controlAlarm
+);
+
+// =====================================================
+// ESP32
+// =====================================================
+
+// ESP32 polls this endpoint every 5 seconds
+//
+// Returns:
+// R1-R6 = Normal devices
+// R7    = Door Alarm
+// R8    = Water Pump
+router.get(
+    "/devices",
+    getDevices
+);
+
+
+// =====================================================
+// USER DEVICE MANAGEMENT
+// =====================================================
+
+// Get logged-in user's devices
+//
+// Works for:
+// - Owner
+// - Accepted member
+router.get(
+    "/user/devices",
+    protect,
+    getUserDevices
+);
+
+
+// =====================================================
+// ADD DEVICE
+// =====================================================
+
+// Add normal device R1-R6
+// Add alarm device R7
+//
+// R8 is permanently reserved for Water Pump
+router.post(
+    "/user/devices",
+    protect,
+    addDevice
+);
+
+
+// =====================================================
+// CONTROL DEVICE
+// =====================================================
+
+// Control normal devices R1-R6
+//
+// R7 alarm should preferably be controlled through:
+// PUT /user/alarm/control
+//
+// R8 pump should be controlled through:
+// PUT /user/pump/control
+router.put(
+    "/user/devices/:deviceId/control",
+    protect,
+    controlDevice
+);
+
+
+// =====================================================
+// DELETE DEVICE
+// =====================================================
+
+// Delete devices R1-R7
+//
+// R8 cannot be deleted because it is reserved
+// for the Water Pump.
+router.delete(
+    "/user/devices/:deviceId",
+    protect,
+    deleteDevice
+);
+
+
+// =====================================================
+// WATER PUMP CONTROL
+//
+// R8 = Water Pump
+// =====================================================
+
+router.put(
+    "/user/pump/control",
+    protect,
+    controlPump
+);
+
+
+// =====================================================
+// EXPORT ROUTER
+// =====================================================
+
+module.exports = router;
+
+
+=== FILE: F:\finalyearproject\backend\routes\memberRoutes.js ===
