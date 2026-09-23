@@ -157,10 +157,11 @@ app.use(
     }
 );
 
-
 // =====================================================
 // START SERVER
 // =====================================================
+
+const PORT = process.env.PORT || 3000;
 
 async function startServer() {
     try {
@@ -168,36 +169,19 @@ async function startServer() {
         startAutomationScheduler();
 
         app.listen(
-            3000,
+            PORT,
+            "0.0.0.0", // Allows Railway to route external incoming traffic
             () => {
-                console.log(
-                    "================================="
-                );
-                console.log(
-                    "SMART HOME BACKEND"
-                );
-                console.log(
-                    "================================="
-                );
-                console.log(
-                    "Server running on port 3000"
-                );
-                console.log(
-                    "================================="
-                );
+                console.log("=================================");
+                console.log("SMART HOME BACKEND");
+                console.log("=================================");
+                console.log(`Server running on port ${PORT}`);
+                console.log("=================================");
             }
         );
     } catch (error) {
-        console.error(
-            "Server startup failed:",
-            error
-        );
+        console.error("Server startup failed:", error);
         process.exit(1);
     }
 }
-
-// =====================================================
-// START APPLICATION
-// =====================================================
-
 startServer();
